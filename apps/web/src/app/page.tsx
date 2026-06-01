@@ -63,8 +63,7 @@ export default function HomePage() {
           </h1>
 
           <p className="text-xl text-ink-300 max-w-2xl mx-auto mb-12 leading-relaxed drop-shadow-lg">
-            Plataforma de torneos con brackets en tiempo real, sistema ELO,
-            equipos e inscripciones online.
+            Plataforma de torneos en tiempo real.
           </p>
 
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
