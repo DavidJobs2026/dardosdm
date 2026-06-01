@@ -137,14 +137,18 @@ export default function HomePage() {
 
       {/* ── Footer ─────────────────────────────── */}
       <footer className="border-t border-ink-800 py-8">
-        <div className="max-w-7xl mx-auto px-6 flex items-center justify-between text-sm text-ink-500">
+        <div className="max-w-7xl mx-auto px-6 flex flex-col sm:flex-row items-center justify-between gap-4 text-sm text-ink-500">
           <div className="flex items-center gap-2">
             <div className="w-5 h-5 bg-red-gradient rounded flex items-center justify-center">
               <Trophy className="w-3 h-3 text-white" />
             </div>
             <span className="text-white">Dardos</span><span className="text-red-500">DM</span>
           </div>
-
+          <div className="flex items-center gap-5 text-xs">
+            <Link href="/privacidad" className="hover:text-ink-300 transition-colors">Política de Privacidad</Link>
+            <Link href="/aviso-legal" className="hover:text-ink-300 transition-colors">Aviso Legal</Link>
+            <Link href="/cookies" className="hover:text-ink-300 transition-colors">Cookies</Link>
+          </div>
         </div>
       </footer>
     </div>
