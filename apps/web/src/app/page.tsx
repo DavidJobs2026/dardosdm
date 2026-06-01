@@ -144,7 +144,7 @@ export default function HomePage() {
             </div>
             <span className="text-white">Dardos</span><span className="text-red-500">DM</span>
           </div>
-          <p>Hecho desde cero · Sin Challonge</p>
+
         </div>
       </footer>
     </div>
