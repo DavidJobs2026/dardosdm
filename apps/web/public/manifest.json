@@ -1,0 +1,13 @@
+{
+  "name": "DardosDM",
+  "short_name": "DardosDM",
+  "description": "Gestión de torneos de dardos",
+  "start_url": "/torneos",
+  "display": "standalone",
+  "background_color": "#0a0a0f",
+  "theme_color": "#ef4444",
+  "icons": [
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}

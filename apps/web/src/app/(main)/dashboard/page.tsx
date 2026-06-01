@@ -1,0 +1,1070 @@
+"use client";
+
+import { useEffect, useRef, useState } from "react";
+import { api } from "@/lib/api";
+import { Tournament } from "@tournament/types";
+import { useAuthStore } from "@/store/auth.store";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import {
+  Plus, Trophy, Users, Play, CheckCircle, ArrowRight, Swords,
+  ShieldCheck, CalendarCog, Trash2, ChevronDown, Loader2, UserPlus, X, Eye, EyeOff, Pencil, KeyRound,
+  UserCog, RotateCcw, Phone, MapPin, CreditCard, Search,
+} from "lucide-react";
+import { clsx } from "clsx";
+import toast from "react-hot-toast";
+
+const STATUS_BADGE: Record<string, string> = {
+  draft:        "badge-gray",
+  registration: "badge-blue",
+  in_progress:  "badge-red",
+  completed:    "badge-purple",
+  cancelled:    "badge-gray",
+};
+const STATUS_LABELS: Record<string, string> = {
+  draft: "Borrador", registration: "Inscripciones",
+  in_progress: "En curso", completed: "Finalizado", cancelled: "Cancelado",
+};
+const FORMAT_SHORT: Record<string, string> = {
+  single_elimination: "Elim. Simple",
+  double_elimination: "Doble Elim.",
+  round_robin: "Round Robin",
+};
+
+const ROLE_LABELS: Record<string, string> = {
+  admin:     "Super Admin",
+  organizer: "Organizador",
+  player:    "Jugador",
+};
+const ROLE_COLOR: Record<string, string> = {
+  admin:     "text-yellow-400 bg-yellow-900/20 border-yellow-800/40",
+  organizer: "text-red-400 bg-red-900/20 border-red-800/40",
+  player:    "text-ink-400 bg-ink-800 border-ink-700",
+};
+
+interface AppUser {
+  id: string;
+  name: string;
+  email: string;
+  role: "admin" | "organizer" | "player";
+  elo: number;
+  createdAt: string;
+}
+
+// ─── Create organizer modal ───────────────────────────────────────────────────
+function CreateOrganizerModal({ onClose, onCreated }: { onClose: () => void; onCreated: (u: AppUser) => void }) {
+  const [name,     setName]     = useState("");
+  const [email,    setEmail]    = useState("");
+  const [password, setPassword] = useState("");
+  const [role,     setRole]     = useState<"organizer" | "admin">("organizer");
+  const [showPw,   setShowPw]   = useState(false);
+  const [saving,   setSaving]   = useState(false);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!name.trim() || !email.trim() || password.length < 8) {
+      toast.error("Rellena todos los campos (contraseña mínimo 8 caracteres)");
+      return;
+    }
+    setSaving(true);
+    try {
+      const { data } = await api.post("/auth/register", { name, email, password, role });
+      onCreated(data.data.user);
+      toast.success(`Cuenta creada para ${name}`);
+      onClose();
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || "Error al crear usuario");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
+      <div className="w-full max-w-md bg-ink-900 border border-ink-700 rounded-2xl shadow-2xl">
+        <div className="flex items-center justify-between p-5 border-b border-ink-800">
+          <div>
+            <h3 className="text-white font-bold">Crear nuevo usuario</h3>
+            <p className="text-ink-400 text-xs mt-0.5">La cuenta se activará de inmediato</p>
+          </div>
+          <button onClick={onClose} className="p-1.5 text-ink-500 hover:text-white rounded-lg hover:bg-ink-800 transition-colors">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="p-5 space-y-4">
+          {/* Role */}
+          <div>
+            <label className="label mb-2">Rol</label>
+            <div className="grid grid-cols-2 gap-2">
+              {([
+                { value: "organizer", label: "Organizador", icon: CalendarCog, color: "red" },
+                { value: "admin",     label: "Super Admin",  icon: ShieldCheck, color: "yellow" },
+              ] as const).map(({ value, label, icon: Icon, color }) => (
+                <button key={value} type="button" onClick={() => setRole(value)}
+                  className={clsx(
+                    "flex items-center gap-2 p-3 rounded-xl border-2 text-sm font-semibold transition-all",
+                    role === value && color === "red"    && "border-red-500 bg-red-900/15 text-white",
+                    role === value && color === "yellow" && "border-yellow-500 bg-yellow-900/15 text-white",
+                    role !== value && "border-ink-700 text-ink-400 hover:border-ink-500",
+                  )}>
+                  <Icon className={clsx("w-4 h-4", role === value && color === "red" ? "text-red-400" : role === value ? "text-yellow-400" : "text-ink-500")} />
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <label className="label">Nombre</label>
+            <input value={name} onChange={e => setName(e.target.value)} className="input" placeholder="Nombre completo" />
+          </div>
+
+          <div>
+            <label className="label">Email</label>
+            <input value={email} onChange={e => setEmail(e.target.value)} type="email" className="input" placeholder="correo@ejemplo.com" />
+          </div>
+
+          <div>
+            <label className="label">Contraseña</label>
+            <div className="relative">
+              <input
+                value={password}
+                onChange={e => setPassword(e.target.value)}
+                type={showPw ? "text" : "password"}
+                className="input pr-10"
+                placeholder="Mínimo 8 caracteres"
+              />
+              <button type="button" onClick={() => setShowPw(v => !v)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-ink-500 hover:text-white transition-colors">
+                {showPw ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </button>
+            </div>
+          </div>
+
+          <div className="flex gap-2 pt-2">
+            <button type="button" onClick={onClose}
+              className="flex-1 px-4 py-2.5 rounded-xl border border-ink-700 text-ink-300 text-sm font-semibold hover:text-white transition-colors">
+              Cancelar
+            </button>
+            <button type="submit" disabled={saving}
+              className="flex-1 btn-primary py-2.5 text-sm disabled:opacity-50">
+              {saving ? <Loader2 className="w-4 h-4 animate-spin mx-auto" /> : "Crear cuenta"}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+// ─── User management (admin only) ────────────────────────────────────────────
+function UserManagement() {
+  const { user: me } = useAuthStore();
+  const [users,         setUsers]         = useState<AppUser[]>([]);
+  const [loading,       setLoading]       = useState(true);
+  const [savingRole,    setSavingRole]    = useState<string | null>(null);
+  const [editingRole,   setEditingRole]   = useState<string | null>(null);
+  const [editingName,   setEditingName]   = useState<string | null>(null);
+  const [draftName,     setDraftName]     = useState("");
+  const [savingName,    setSavingName]    = useState<string | null>(null);
+  const [editingPw,     setEditingPw]     = useState<string | null>(null);
+  const [draftPw,       setDraftPw]       = useState("");
+  const [showDraftPw,   setShowDraftPw]   = useState(false);
+  const [savingPw,      setSavingPw]      = useState<string | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
+  const [deleting,      setDeleting]      = useState(false);
+  const [showCreate,    setShowCreate]    = useState(false);
+
+  const sortUsers = (list: AppUser[]) =>
+    [...list].sort((a, b) => {
+      if (a.role === "admin" && b.role !== "admin") return -1;
+      if (a.role !== "admin" && b.role === "admin") return  1;
+      return 0;
+    });
+
+  useEffect(() => {
+    api.get("/users")
+      .then(({ data }) => setUsers(
+        sortUsers((data.data as AppUser[]).filter(u => u.role !== "player"))
+      ))
+      .catch(() => toast.error("Error cargando usuarios"))
+      .finally(() => setLoading(false));
+  }, []);
+
+  const startEditName = (u: AppUser) => {
+    setEditingName(u.id);
+    setDraftName(u.name);
+    setEditingRole(null);
+  };
+
+  const handleNameSave = async (userId: string) => {
+    const trimmed = draftName.trim();
+    if (trimmed.length < 2) { toast.error("Mínimo 2 caracteres"); return; }
+    setSavingName(userId);
+    setEditingName(null);
+    try {
+      await api.patch(`/users/${userId}/name`, { name: trimmed });
+      setUsers(prev => prev.map(u => u.id === userId ? { ...u, name: trimmed } : u));
+      toast.success("Nombre actualizado");
+    } catch {
+      toast.error("Error al cambiar el nombre");
+    } finally {
+      setSavingName(null);
+    }
+  };
+
+  const startEditPw = (userId: string) => {
+    setEditingPw(userId);
+    setDraftPw("");
+    setShowDraftPw(false);
+    setEditingName(null);
+    setEditingRole(null);
+  };
+
+  const handlePwSave = async (userId: string) => {
+    if (draftPw.length < 8) { toast.error("Mínimo 8 caracteres"); return; }
+    setSavingPw(userId);
+    setEditingPw(null);
+    try {
+      await api.patch(`/users/${userId}/password`, { password: draftPw });
+      toast.success("Contraseña actualizada");
+    } catch {
+      toast.error("Error al cambiar la contraseña");
+    } finally {
+      setSavingPw(null);
+    }
+  };
+
+  const handleRoleChange = async (userId: string, role: "admin" | "organizer") => {
+    setSavingRole(userId);
+    setEditingRole(null);
+    try {
+      await api.patch(`/users/${userId}/role`, { role });
+      setUsers(prev => sortUsers(prev.map(u => u.id === userId ? { ...u, role } : u)));
+      toast.success("Rol actualizado");
+    } catch {
+      toast.error("Error al cambiar el rol");
+    } finally {
+      setSavingRole(null);
+    }
+  };
+
+  const handleDelete = async (userId: string) => {
+    setDeleting(true);
+    try {
+      await api.delete(`/users/${userId}`);
+      setUsers(prev => prev.filter(u => u.id !== userId));
+      setConfirmDelete(null);
+      toast.success("Usuario eliminado");
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || "Error al eliminar");
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  if (loading) return (
+    <div className="flex items-center justify-center py-12">
+      <Loader2 className="w-6 h-6 text-ink-500 animate-spin" />
+    </div>
+  );
+
+  return (
+    <div className="space-y-3">
+      {/* Create button */}
+      <div className="flex justify-end mb-2">
+        <button
+          onClick={() => setShowCreate(true)}
+          className="btn-primary flex items-center gap-2 shadow-red-glow"
+        >
+          <UserPlus className="w-4 h-4" /> Crear usuario
+        </button>
+      </div>
+
+      {/* Create modal */}
+      {showCreate && (
+        <CreateOrganizerModal
+          onClose={() => setShowCreate(false)}
+          onCreated={(u) => setUsers(prev => sortUsers([...prev, u as AppUser]))}
+        />
+      )}
+
+      {users.map(u => {
+        const isMe             = u.id === me?.id;
+        const isConfirming     = confirmDelete === u.id;
+        const isSavingRole     = savingRole === u.id;
+        const isEditingRole    = editingRole === u.id;
+        const isEditingName    = editingName === u.id;
+        const isSavingThisName = savingName === u.id;
+        const isEditingThisPw  = editingPw === u.id;
+        const isSavingThisPw   = savingPw === u.id;
+
+        return (
+          <div key={u.id} className="flex items-center gap-4 px-5 py-4 bg-ink-900 border border-ink-800 rounded-xl">
+            {/* Avatar */}
+            <div className={clsx(
+              "w-9 h-9 rounded-lg flex items-center justify-center text-sm font-bold shrink-0",
+              u.role === "admin" ? "bg-yellow-900/40 text-yellow-400" : "bg-red-900/40 text-red-400"
+            )}>
+              {(isEditingName ? draftName[0] : u.name[0])?.toUpperCase() ?? "?"}
+            </div>
+
+            {/* Info */}
+            <div className="flex-1 min-w-0">
+              {isEditingName ? (
+                <form onSubmit={e => { e.preventDefault(); handleNameSave(u.id); }}
+                      className="flex items-center gap-1.5">
+                  <input
+                    autoFocus
+                    value={draftName}
+                    onChange={e => setDraftName(e.target.value)}
+                    onKeyDown={e => e.key === "Escape" && setEditingName(null)}
+                    className="input py-1 text-sm h-7 flex-1 min-w-0"
+                    placeholder="Nombre"
+                  />
+                  <button type="submit"
+                    className="px-2.5 py-1 rounded-lg bg-red-600 hover:bg-red-500 text-white text-xs font-bold transition-colors shrink-0">
+                    Guardar
+                  </button>
+                  <button type="button" onClick={() => setEditingName(null)}
+                    className="p-1 text-ink-500 hover:text-white transition-colors shrink-0">
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </form>
+              ) : (
+                <div className="flex items-center gap-2 flex-wrap">
+                  {isSavingThisName ? (
+                    <span className="text-ink-400 text-sm flex items-center gap-1.5">
+                      <Loader2 className="w-3 h-3 animate-spin" /> Guardando…
+                    </span>
+                  ) : (
+                    <p className="text-white font-semibold text-sm truncate">{u.name}</p>
+                  )}
+                  {isMe && <span className="text-[10px] font-bold text-ink-500 bg-ink-800 px-1.5 py-0.5 rounded">Tú</span>}
+                  {!isSavingThisName && (
+                    <button onClick={() => startEditName(u)}
+                      className="text-ink-600 hover:text-ink-300 transition-colors"
+                      title="Editar nombre">
+                      <Pencil className="w-3 h-3" />
+                    </button>
+                  )}
+                </div>
+              )}
+              <p className="text-ink-500 text-xs truncate mt-0.5">{u.email}</p>
+
+              {/* Password form — inline below email */}
+              {isEditingThisPw && (
+                <form onSubmit={e => { e.preventDefault(); handlePwSave(u.id); }}
+                      className="flex items-center gap-1.5 mt-2">
+                  <div className="relative flex-1 min-w-0">
+                    <input
+                      autoFocus
+                      value={draftPw}
+                      onChange={e => setDraftPw(e.target.value)}
+                      onKeyDown={e => e.key === "Escape" && setEditingPw(null)}
+                      type={showDraftPw ? "text" : "password"}
+                      className="input py-1 text-sm h-7 w-full pr-8"
+                      placeholder="Nueva contraseña (mín. 8)"
+                    />
+                    <button type="button" onClick={() => setShowDraftPw(v => !v)}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 text-ink-500 hover:text-white transition-colors">
+                      {showDraftPw ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                    </button>
+                  </div>
+                  <button type="submit"
+                    className="px-2.5 py-1 rounded-lg bg-red-600 hover:bg-red-500 text-white text-xs font-bold transition-colors shrink-0">
+                    Guardar
+                  </button>
+                  <button type="button" onClick={() => setEditingPw(null)}
+                    className="p-1 text-ink-500 hover:text-white transition-colors shrink-0">
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </form>
+              )}
+            </div>
+
+            {/* Actions */}
+            {isConfirming ? (
+              /* ── Delete confirm ── */
+              <div className="flex items-center gap-2 shrink-0">
+                <span className="text-xs text-red-400 font-medium">¿Eliminar?</span>
+                <button onClick={() => handleDelete(u.id)} disabled={deleting}
+                  className="px-3 py-1.5 rounded-lg bg-red-700 hover:bg-red-600 text-white text-xs font-bold transition-colors disabled:opacity-50">
+                  {deleting ? "…" : "Sí"}
+                </button>
+                <button onClick={() => setConfirmDelete(null)}
+                  className="px-3 py-1.5 rounded-lg border border-ink-700 text-ink-300 text-xs font-semibold hover:text-white transition-colors">
+                  No
+                </button>
+              </div>
+            ) : isSavingRole ? (
+              /* ── Saving spinner ── */
+              <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-ink-700 text-xs shrink-0">
+                <Loader2 className="w-3 h-3 animate-spin text-ink-400" />
+                <span className="text-ink-400">Guardando…</span>
+              </div>
+            ) : isEditingRole ? (
+              /* ── Inline role selector ── */
+              <div className="flex items-center gap-1.5 shrink-0">
+                {(["admin", "organizer"] as const).map(r => (
+                  <button key={r} onClick={() => handleRoleChange(u.id, r)}
+                    className={clsx(
+                      "px-3 py-1.5 rounded-lg border text-xs font-semibold transition-all",
+                      u.role === r
+                        ? r === "admin"
+                          ? "border-yellow-500 bg-yellow-900/25 text-yellow-300"
+                          : "border-red-500 bg-red-900/25 text-red-300"
+                        : "border-ink-700 text-ink-400 hover:border-ink-500 hover:text-white"
+                    )}>
+                    {r === "admin" ? "Super Admin" : "Organizador"}
+                  </button>
+                ))}
+                <button onClick={() => setEditingRole(null)}
+                  className="p-1.5 rounded-lg text-ink-500 hover:text-white hover:bg-ink-800 transition-colors"
+                  title="Cancelar">
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            ) : (
+              /* ── Default view ── */
+              <div className="flex items-center gap-2 shrink-0">
+                {/* Role badge */}
+                <span className={clsx(
+                  "px-2.5 py-1 rounded-lg border text-xs font-semibold",
+                  ROLE_COLOR[u.role]
+                )}>
+                  {ROLE_LABELS[u.role]}
+                </span>
+
+                {/* Change password */}
+                {!isEditingName && !isEditingThisPw && (
+                  <button onClick={() => startEditPw(u.id)}
+                    className={clsx(
+                      "p-1.5 rounded-lg border border-transparent transition-all",
+                      isSavingThisPw
+                        ? "text-ink-600 cursor-default"
+                        : "text-ink-600 hover:text-yellow-400 hover:bg-yellow-900/20 hover:border-yellow-800/40"
+                    )}
+                    title="Cambiar contraseña"
+                    disabled={isSavingThisPw}>
+                    {isSavingThisPw
+                      ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      : <KeyRound className="w-3.5 h-3.5" />}
+                  </button>
+                )}
+
+                {/* Edit role */}
+                {!isMe && !isEditingName && !isEditingThisPw && (
+                  <button onClick={() => setEditingRole(u.id)}
+                    className="p-1.5 rounded-lg text-ink-600 hover:text-white hover:bg-ink-800 border border-transparent hover:border-ink-700 transition-all"
+                    title="Editar rol">
+                    <Pencil className="w-3.5 h-3.5" />
+                  </button>
+                )}
+
+                {/* Delete */}
+                {!isMe && !isEditingName && !isEditingThisPw && (
+                  <button onClick={() => setConfirmDelete(u.id)}
+                    className="p-1.5 rounded-lg text-ink-600 hover:text-red-400 hover:bg-red-900/20 border border-transparent hover:border-red-800/40 transition-all"
+                    title="Eliminar usuario">
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+        );
+      })}
+
+      {users.length === 0 && (
+        <p className="text-center text-ink-500 py-8 text-sm">No hay usuarios registrados</p>
+      )}
+    </div>
+  );
+}
+
+// ─── Player profile (full) ───────────────────────────────────────────────────
+interface PlayerProfile {
+  id: string;
+  name: string;
+  email: string;
+  role: string;
+  dni: string | null;
+  phone: string | null;
+  province: string | null;
+  birthDate: string | null;
+  gdprConsent: boolean;
+  whatsappConsent: boolean;
+  emailConsent: boolean;
+  ligaCard: string | null;
+  clubCard: string | null;
+  createdAt: string;
+}
+
+// ─── DNI / NIE validator ─────────────────────────────────────────────────────
+const DNI_LETTERS = "TRWAGMYFPDXBNJZSQVHLCKE";
+function validateDni(raw: string): boolean {
+  const v = raw.trim().toUpperCase();
+  if (/^[0-9]{8}[A-Z]$/.test(v)) return v[8] === DNI_LETTERS[parseInt(v.slice(0, 8), 10) % 23];
+  if (/^[XYZ][0-9]{7}[A-Z]$/.test(v)) {
+    const p: Record<string, string> = { X: "0", Y: "1", Z: "2" };
+    return v[8] === DNI_LETTERS[parseInt(p[v[0]] + v.slice(1, 8), 10) % 23];
+  }
+  return false;
+}
+
+// ─── Edit player modal ────────────────────────────────────────────────────────
+function EditPlayerModal({ player, onClose, onSaved }: {
+  player: PlayerProfile;
+  onClose: () => void;
+  onSaved: (updated: PlayerProfile) => void;
+}) {
+  const [name,      setName]      = useState(player.name);
+  const [email,     setEmail]     = useState(player.email);
+  const [dni,       setDni]       = useState(player.dni ?? "");
+  const [phone,     setPhone]     = useState(player.phone ?? "");
+  const [province,  setProvince]  = useState(player.province ?? "");
+  const [birthDate, setBirthDate] = useState(
+    player.birthDate ? player.birthDate.substring(0, 10) : ""
+  );
+  const [ligaCard,  setLigaCard]  = useState(player.ligaCard ?? "");
+  const [clubCard,  setClubCard]  = useState(player.clubCard ?? "");
+  const [saving, setSaving] = useState(false);
+
+  const handleSave = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!name.trim() || !email.trim()) { toast.error("Nombre y email son obligatorios"); return; }
+    if (dni.trim() && !validateDni(dni.trim())) { toast.error("DNI/NIE inválido — revisa el número y la letra"); return; }
+    setSaving(true);
+    try {
+      const { data } = await api.patch(`/users/${player.id}/profile`, {
+        name: name.trim(),
+        email: email.trim(),
+        dni: dni.trim().toUpperCase() || null,
+        phone: phone.trim() || null,
+        province: province || null,
+        birthDate: birthDate || null,
+        ligaCard: ligaCard.trim() || null,
+        clubCard: clubCard.trim() || null,
+      });
+      onSaved(data.data);
+      toast.success("Perfil actualizado");
+      onClose();
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || "Error al guardar");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
+      <div className="w-full max-w-lg bg-ink-900 border border-ink-700 rounded-2xl shadow-2xl">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-ink-800">
+          <div>
+            <h3 className="text-white font-bold">Editar jugador</h3>
+            <p className="text-ink-500 text-xs mt-0.5">{player.email}</p>
+          </div>
+          <button onClick={onClose} className="p-1.5 text-ink-500 hover:text-white rounded-lg hover:bg-ink-800 transition-colors">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        <form onSubmit={handleSave} className="p-6 space-y-4">
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="label">Nombre completo</label>
+              <input value={name} onChange={e => setName(e.target.value)} className="input" placeholder="Nombre" />
+            </div>
+            <div>
+              <label className="label">Email</label>
+              <input value={email} onChange={e => setEmail(e.target.value)} type="email" className="input" />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="label">DNI / NIE</label>
+              <div className="relative">
+                <CreditCard className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-ink-500" />
+                <input
+                  value={dni}
+                  onChange={e => setDni(e.target.value.toUpperCase())}
+                  className={clsx("input pl-9", dni.trim() && !validateDni(dni.trim()) && "border-red-500/70")}
+                  placeholder="12345678A"
+                />
+              </div>
+              {dni.trim() && !validateDni(dni.trim()) && (
+                <p className="text-red-400 text-xs mt-1">DNI/NIE inválido</p>
+              )}
+            </div>
+            <div>
+              <label className="label">Teléfono</label>
+              <div className="relative">
+                <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-ink-500" />
+                <input value={phone} onChange={e => setPhone(e.target.value)} className="input pl-9"
+                  placeholder="6XX XXX XXX" />
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="label">Provincia</label>
+              <div className="relative">
+                <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-ink-500" />
+                <input value={province} onChange={e => setProvince(e.target.value)} className="input pl-9"
+                  placeholder="Madrid" />
+              </div>
+            </div>
+            <div>
+              <label className="label">Fecha de nacimiento</label>
+              <input value={birthDate} onChange={e => setBirthDate(e.target.value)} type="date"
+                className="input" style={{ colorScheme: "dark" }} />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="label">Tarjeta liga PhoenixDarts</label>
+              <input
+                value={ligaCard}
+                onChange={e => setLigaCard(e.target.value.replace(/\D/g, "").slice(0, 16))}
+                className="input font-mono tracking-wider"
+                placeholder="16 dígitos"
+                maxLength={16}
+                inputMode="numeric"
+              />
+            </div>
+            <div>
+              <label className="label">Tarjeta club PhoenixDarts</label>
+              <input
+                value={clubCard}
+                onChange={e => setClubCard(e.target.value.replace(/\D/g, "").slice(0, 16))}
+                className="input font-mono tracking-wider"
+                placeholder="16 dígitos"
+                maxLength={16}
+                inputMode="numeric"
+              />
+            </div>
+          </div>
+
+          {/* Consents — read-only info */}
+          <div className="flex items-center gap-4 px-3 py-2 bg-ink-800/50 rounded-lg text-xs text-ink-500">
+            <span className={player.gdprConsent ? "text-green-400" : ""}>RGPD {player.gdprConsent ? "✓" : "✗"}</span>
+            <span className={player.whatsappConsent ? "text-green-400" : ""}>WhatsApp {player.whatsappConsent ? "✓" : "✗"}</span>
+            <span className={player.emailConsent ? "text-green-400" : ""}>Email {player.emailConsent ? "✓" : "✗"}</span>
+          </div>
+
+          <div className="flex gap-2 pt-1">
+            <button type="button" onClick={onClose}
+              className="flex-1 px-4 py-2.5 rounded-xl border border-ink-700 text-ink-300 text-sm font-semibold hover:text-white transition-colors">
+              Cancelar
+            </button>
+            <button type="submit" disabled={saving} className="flex-1 btn-primary py-2.5 text-sm disabled:opacity-50">
+              {saving ? <Loader2 className="w-4 h-4 animate-spin mx-auto" /> : "Guardar cambios"}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+// ─── Player management panel ──────────────────────────────────────────────────
+function PlayerManagement() {
+  const [players,       setPlayers]       = useState<PlayerProfile[]>([]);
+  const [loading,       setLoading]       = useState(true);
+  const [search,        setSearch]        = useState("");
+  const [editingPlayer, setEditingPlayer] = useState<PlayerProfile | null>(null);
+  const [resetting,     setResetting]     = useState<string | null>(null);
+  const [confirmReset,  setConfirmReset]  = useState<string | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
+  const [deleting,      setDeleting]      = useState(false);
+
+  useEffect(() => {
+    api.get("/users/players")
+      .then(({ data }) => setPlayers(data.data))
+      .catch(() => toast.error("Error cargando jugadores"))
+      .finally(() => setLoading(false));
+  }, []);
+
+  const handleResetPassword = async (player: PlayerProfile) => {
+    if (!player.dni) {
+      toast.error("El jugador no tiene DNI/NIE. Edítalo primero.");
+      setConfirmReset(null);
+      return;
+    }
+    setResetting(player.id);
+    setConfirmReset(null);
+    try {
+      await api.post(`/users/${player.id}/reset-password`, {});
+      toast.success(`Contraseña de ${player.name} restablecida al DNI: ${player.dni.toUpperCase()}`);
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || "Error al restablecer");
+    } finally {
+      setResetting(null);
+    }
+  };
+
+  const handleDeletePlayer = async (playerId: string) => {
+    setDeleting(true);
+    try {
+      await api.delete(`/users/${playerId}`);
+      setPlayers(prev => prev.filter(p => p.id !== playerId));
+      setConfirmDelete(null);
+      toast.success("Jugador eliminado");
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || "Error al eliminar");
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  const filtered = players.filter(p =>
+    `${p.name} ${p.email} ${p.dni ?? ""} ${p.province ?? ""}`.toLowerCase().includes(search.toLowerCase())
+  );
+
+  if (loading) return (
+    <div className="flex items-center justify-center py-12">
+      <Loader2 className="w-6 h-6 text-ink-500 animate-spin" />
+    </div>
+  );
+
+  return (
+    <div className="space-y-3">
+      {/* Search */}
+      <div className="relative">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-ink-500" />
+        <input value={search} onChange={e => setSearch(e.target.value)}
+          className="input pl-9" placeholder="Buscar por nombre, email, DNI o provincia…" />
+      </div>
+
+      <p className="text-xs text-ink-600">{filtered.length} jugador{filtered.length !== 1 ? "es" : ""}</p>
+
+      {filtered.map(p => {
+        const isConfirmingReset  = confirmReset  === p.id;
+        const isConfirmingDelete = confirmDelete === p.id;
+        const isResetting        = resetting === p.id;
+
+        return (
+          <div key={p.id} className="flex items-center gap-3 px-4 py-3 bg-ink-900 border border-ink-800 rounded-xl">
+            {/* Avatar */}
+            <div className="w-9 h-9 rounded-lg bg-ink-700 flex items-center justify-center text-sm font-bold text-white shrink-0">
+              {p.name[0].toUpperCase()}
+            </div>
+
+            {/* Info */}
+            <div className="flex-1 min-w-0">
+              <p className="text-white font-semibold text-sm truncate">{p.name}</p>
+              <div className="flex items-center gap-3 mt-0.5 flex-wrap">
+                <span className="text-ink-500 text-xs truncate">{p.email}</span>
+                {p.dni && (
+                  <span className="text-xs font-mono text-ink-400 bg-ink-800 px-1.5 py-0.5 rounded">
+                    {p.dni.toUpperCase()}
+                  </span>
+                )}
+                {p.phone && <span className="text-xs text-ink-500">{p.phone}</span>}
+                {p.province && <span className="text-xs text-ink-600">{p.province}</span>}
+              </div>
+            </div>
+
+            {/* Actions */}
+            {isConfirmingDelete ? (
+              <div className="flex items-center gap-2 shrink-0">
+                <span className="text-xs text-red-400 font-medium">¿Eliminar?</span>
+                <button onClick={() => handleDeletePlayer(p.id)} disabled={deleting}
+                  className="px-2.5 py-1 rounded-lg bg-red-700 hover:bg-red-600 text-white text-xs font-bold transition-colors disabled:opacity-50">
+                  {deleting ? "…" : "Sí"}
+                </button>
+                <button onClick={() => setConfirmDelete(null)}
+                  className="px-2.5 py-1 rounded-lg border border-ink-700 text-ink-300 text-xs font-semibold hover:text-white transition-colors">
+                  No
+                </button>
+              </div>
+            ) : isConfirmingReset ? (
+              <div className="flex items-center gap-2 shrink-0">
+                <span className="text-xs text-yellow-400 font-medium">¿Resetear a DNI?</span>
+                <button onClick={() => handleResetPassword(p)} disabled={isResetting}
+                  className="px-2.5 py-1 rounded-lg bg-yellow-700 hover:bg-yellow-600 text-white text-xs font-bold transition-colors disabled:opacity-50">
+                  Sí
+                </button>
+                <button onClick={() => setConfirmReset(null)}
+                  className="px-2.5 py-1 rounded-lg border border-ink-700 text-ink-300 text-xs font-semibold hover:text-white transition-colors">
+                  No
+                </button>
+              </div>
+            ) : (
+              <div className="flex items-center gap-1.5 shrink-0">
+                {/* Edit */}
+                <button onClick={() => setEditingPlayer(p)}
+                  className="p-1.5 rounded-lg text-ink-600 hover:text-white hover:bg-ink-800 border border-transparent hover:border-ink-700 transition-all"
+                  title="Editar jugador">
+                  <Pencil className="w-3.5 h-3.5" />
+                </button>
+                {/* Reset password */}
+                <button
+                  onClick={() => p.dni ? setConfirmReset(p.id) : toast.error("Sin DNI — edita primero el jugador")}
+                  disabled={isResetting}
+                  className={clsx(
+                    "p-1.5 rounded-lg border border-transparent transition-all",
+                    isResetting
+                      ? "text-ink-600 cursor-default"
+                      : p.dni
+                        ? "text-ink-600 hover:text-yellow-400 hover:bg-yellow-900/20 hover:border-yellow-800/40"
+                        : "text-ink-800 cursor-not-allowed"
+                  )}
+                  title={p.dni ? "Resetear contraseña al DNI" : "Sin DNI"}>
+                  {isResetting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RotateCcw className="w-3.5 h-3.5" />}
+                </button>
+                {/* Delete */}
+                <button onClick={() => setConfirmDelete(p.id)}
+                  className="p-1.5 rounded-lg text-ink-600 hover:text-red-400 hover:bg-red-900/20 border border-transparent hover:border-red-800/40 transition-all"
+                  title="Eliminar jugador">
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            )}
+          </div>
+        );
+      })}
+
+      {filtered.length === 0 && !loading && (
+        <p className="text-center text-ink-500 py-8 text-sm">
+          {search ? "Sin resultados para esa búsqueda" : "No hay jugadores registrados"}
+        </p>
+      )}
+
+      {/* Edit modal */}
+      {editingPlayer && (
+        <EditPlayerModal
+          player={editingPlayer}
+          onClose={() => setEditingPlayer(null)}
+          onSaved={(updated) => {
+            setPlayers(prev => prev.map(p => p.id === updated.id ? { ...p, ...updated } : p));
+            setEditingPlayer(null);
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+// ─── Main page ────────────────────────────────────────────────────────────────
+export default function DashboardPage() {
+  const { user } = useAuthStore();
+  const router   = useRouter();
+  const [tournaments,  setTournaments]  = useState<Tournament[]>([]);
+  const [loading,      setLoading]      = useState(true);
+  const [showRoleMenu,   setShowRoleMenu]   = useState(false);
+  const [showUserMgmt,   setShowUserMgmt]   = useState(false);
+  const [showPlayerMgmt, setShowPlayerMgmt] = useState(false);
+  const roleMenuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!user) { router.push("/auth/login"); return; }
+    if (user.role === "player") { router.push("/torneos"); return; }
+    api.get("/tournaments")
+      .then(({ data }) => setTournaments(data.data))
+      .catch(() => toast.error("Error cargando torneos"))
+      .finally(() => setLoading(false));
+  }, [user, router]);
+
+  // Close dropdown on outside click
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (roleMenuRef.current && !roleMenuRef.current.contains(e.target as Node)) {
+        setShowRoleMenu(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  if (!user || user.role === "player") return null;
+
+  const isAdmin = user.role === "admin";
+
+  const stats = {
+    total:     tournaments.length,
+    active:    tournaments.filter(t => t.status === "in_progress").length,
+    completed: tournaments.filter(t => t.status === "completed").length,
+    players:   tournaments.reduce((s, t) => s + t.participantsCount, 0),
+  };
+
+  return (
+    <div className="space-y-8">
+      {/* Header */}
+      <div className="flex items-start justify-between flex-wrap gap-4">
+        <div>
+          <p className="text-ink-500 text-sm font-medium uppercase tracking-widest mb-1">Dashboard</p>
+          <h1 className="text-4xl font-black text-white tracking-tight">
+            Hola, <span className="text-gradient">{user.name}</span>
+          </h1>
+
+          {/* Role badge — clickable for both admin and organizer */}
+          <div className="relative mt-2" ref={roleMenuRef}>
+            <button
+              onClick={() => setShowRoleMenu(v => !v)}
+              className={clsx(
+                "inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-xs font-semibold hover:opacity-80 transition-opacity",
+                isAdmin
+                  ? "text-yellow-400 bg-yellow-900/20 border-yellow-800/40"
+                  : "text-red-400 bg-red-900/20 border-red-800/40"
+              )}
+            >
+              {isAdmin
+                ? <><ShieldCheck className="w-3.5 h-3.5" /> Super Admin</>
+                : <><CalendarCog className="w-3.5 h-3.5" /> Organizador de Torneos</>}
+              <ChevronDown className={clsx("w-3 h-3 transition-transform duration-150", showRoleMenu && "rotate-180")} />
+            </button>
+
+            {showRoleMenu && (
+              <div className="absolute top-full left-0 mt-1.5 bg-ink-900 border border-ink-700
+                              rounded-xl shadow-2xl z-20 min-w-[200px] py-1 overflow-hidden">
+                <button
+                  onClick={() => { setShowPlayerMgmt(true); setShowRoleMenu(false); }}
+                  className="flex items-center gap-2.5 w-full px-4 py-2.5 text-sm
+                             text-ink-300 hover:text-white hover:bg-ink-800 transition-colors"
+                >
+                  <UserCog className="w-4 h-4" /> Panel de jugadores
+                </button>
+                {isAdmin && (
+                  <>
+                    <div className="my-1 border-t border-ink-800" />
+                    <button
+                      onClick={() => { setShowUserMgmt(true); setShowRoleMenu(false); }}
+                      className="flex items-center gap-2.5 w-full px-4 py-2.5 text-sm
+                                 text-ink-300 hover:text-white hover:bg-ink-800 transition-colors"
+                    >
+                      <Users className="w-4 h-4" /> Gestión de roles
+                    </button>
+                  </>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+        <Link href="/tournaments/create" className="btn-primary shadow-red-glow">
+          <Plus className="w-4 h-4" /> Nuevo torneo
+        </Link>
+      </div>
+
+      {/* Stats */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        {[
+          { icon: Trophy,      value: stats.total,     label: "Total torneos", accent: "text-red-400",    bg: "bg-red-900/20 border-red-900/40" },
+          { icon: Play,        value: stats.active,    label: "En curso",      accent: "text-green-400",  bg: "bg-green-900/20 border-green-900/40" },
+          { icon: CheckCircle, value: stats.completed, label: "Completados",   accent: "text-purple-400", bg: "bg-purple-900/20 border-purple-900/40" },
+          { icon: Users,       value: stats.players,   label: "Participantes", accent: "text-white",      bg: "bg-ink-800 border-ink-700" },
+        ].map(({ icon: Icon, value, label, accent, bg }) => (
+          <div key={label} className={`rounded-xl p-5 border flex items-center gap-4 ${bg}`}>
+            <div className={`w-10 h-10 rounded-lg bg-ink-900/60 flex items-center justify-center ${accent}`}>
+              <Icon className="w-5 h-5" />
+            </div>
+            <div>
+              <p className={`text-3xl font-black ${accent}`}>{value}</p>
+              <p className="text-xs text-ink-500 mt-0.5">{label}</p>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Tournaments list */}
+      <div>
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-xl font-bold text-white">Mis torneos</h2>
+          <span className="text-xs text-ink-500">{tournaments.length} torneos</span>
+        </div>
+
+        {loading ? (
+          <div className="space-y-3">
+            {[1, 2, 3].map(i => <div key={i} className="card h-16 animate-pulse bg-ink-900" />)}
+          </div>
+        ) : tournaments.length === 0 ? (
+          <div className="card text-center py-16 border-dashed border-ink-700">
+            <Swords className="w-10 h-10 text-ink-800 mx-auto mb-4" />
+            <p className="text-ink-500 mb-5">Aún no has creado ningún torneo</p>
+            <Link href="/tournaments/create" className="btn-primary inline-flex shadow-red-glow">
+              <Plus className="w-4 h-4" /> Crear primer torneo
+            </Link>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {tournaments.map((t) => (
+              <Link href={`/tournaments/${t.id}`} key={t.id}>
+                <div className="flex items-center justify-between gap-4 px-5 py-4
+                                bg-ink-900 border border-ink-800 rounded-xl
+                                hover:border-ink-600 hover:bg-ink-800/60 transition-all group">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <span className={clsx("shrink-0", STATUS_BADGE[t.status])}>
+                      {STATUS_LABELS[t.status]}
+                    </span>
+                    <div className="min-w-0">
+                      <p className="text-white font-semibold truncate group-hover:text-red-400 transition-colors">
+                        {t.name}
+                      </p>
+                      <p className="text-ink-500 text-xs mt-0.5">
+                        {t.participantsCount}/{t.maxParticipants} · {FORMAT_SHORT[t.format]}
+                      </p>
+                    </div>
+                  </div>
+                  <ArrowRight className="w-4 h-4 text-ink-700 group-hover:text-red-400 transition-colors shrink-0" />
+                </div>
+              </Link>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Player management modal (admin + organizer) */}
+      {showPlayerMgmt && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
+          <div className="w-full max-w-2xl bg-ink-900 border border-ink-700 rounded-2xl shadow-2xl flex flex-col"
+               style={{ maxHeight: "85vh" }}>
+            <div className="flex items-center justify-between px-6 py-4 border-b border-ink-800 shrink-0">
+              <div>
+                <h3 className="text-white font-bold text-lg">Panel de jugadores</h3>
+                <p className="text-ink-500 text-xs mt-0.5">Edita datos y restablece contraseñas al DNI/NIE</p>
+              </div>
+              <button onClick={() => setShowPlayerMgmt(false)}
+                className="p-1.5 text-ink-500 hover:text-white rounded-lg hover:bg-ink-800 transition-colors">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="overflow-y-auto p-5">
+              <PlayerManagement />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* User management modal (admin only) */}
+      {showUserMgmt && isAdmin && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
+          <div className="w-full max-w-2xl bg-ink-900 border border-ink-700 rounded-2xl shadow-2xl flex flex-col"
+               style={{ maxHeight: "80vh" }}>
+            {/* Modal header */}
+            <div className="flex items-center justify-between px-6 py-4 border-b border-ink-800 shrink-0">
+              <div>
+                <h3 className="text-white font-bold text-lg">Gestión de roles</h3>
+                <p className="text-ink-500 text-xs mt-0.5">Administra usuarios y permisos de la plataforma</p>
+              </div>
+              <button
+                onClick={() => setShowUserMgmt(false)}
+                className="p-1.5 text-ink-500 hover:text-white rounded-lg hover:bg-ink-800 transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            {/* Scrollable content */}
+            <div className="overflow-y-auto p-5">
+              <UserManagement />
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

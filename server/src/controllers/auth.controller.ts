@@ -1,0 +1,383 @@
+import { Request, Response, NextFunction } from "express";
+import bcrypt from "bcryptjs";
+import crypto from "crypto";
+import { z } from "zod";
+import { prisma } from "../lib/prisma";
+import { signAccessToken, signRefreshToken, verifyRefreshToken } from "../utils/jwt";
+import { badRequest, unauthorized, notFound } from "../utils/errors";
+import { AuthRequest } from "../middlewares/auth.middleware";
+import { sendWelcomeVerification } from "../lib/email";
+
+// ─── Cookie helpers ───────────────────────────────────────────────────────────
+const COOKIE_NAME = "refreshToken";
+const COOKIE_MAX_AGE = 7 * 24 * 60 * 60 * 1000; // 7 days in ms
+
+function setRefreshCookie(res: Response, token: string) {
+  res.cookie(COOKIE_NAME, token, {
+    httpOnly:  true,                                  // not accessible from JS
+    secure:    process.env.NODE_ENV === "production", // HTTPS only in prod
+    sameSite:  "strict",                              // no CSRF
+    maxAge:    COOKIE_MAX_AGE,
+    path:      "/api/v1/auth",                        // only sent to auth routes
+  });
+}
+
+function clearRefreshCookie(res: Response) {
+  res.clearCookie(COOKIE_NAME, { path: "/api/v1/auth" });
+}
+
+const registerSchema = z.object({
+  email:           z.string().email(),
+  password:        z.string().min(8, "Password must be at least 8 characters"),
+  name:            z.string().min(2, "Name must be at least 2 characters"),
+  // "admin" is never allowed via the public registration endpoint.
+  // Admins must be promoted by an existing admin via PATCH /users/:id/role.
+  role:            z.enum(["organizer", "player"]).optional().default("player"),
+  // Player-specific fields (optional for organizer/admin)
+  dni:             z.string().optional(),
+  phone:           z.string().optional(),
+  province:        z.string().optional(),
+  birthDate:       z.string().optional(),
+  gdprConsent:     z.boolean().optional().default(false),
+  whatsappConsent: z.boolean().optional().default(false),
+  emailConsent:    z.boolean().optional().default(false),
+  ligaCard:        z.string().max(16).optional(),
+  clubCard:        z.string().max(16).optional(),
+});
+
+const loginSchema = z.object({
+  email: z.string().email(),
+  password: z.string(),
+});
+
+export const checkDni = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const dni = String(req.query.dni || "").trim().toUpperCase();
+    if (!dni) return res.json({ data: { found: false } });
+
+    const record = await prisma.playerRecord.findFirst({
+      where: { dni: { equals: dni, mode: "insensitive" } },
+      orderBy: { createdAt: "desc" },
+      select: { name: true, teamName: true, provincia: true, cardNumber: true, ppd: true, mpr: true, combined: true },
+    });
+
+    if (record) {
+      return res.json({ data: { found: true, name: record.name, teamName: record.teamName, provincia: record.provincia, cardNumber: record.cardNumber } });
+    }
+    return res.json({ data: { found: false } });
+  } catch (err) { next(err); }
+};
+
+export const checkPhone = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const phone = String(req.query.phone || "").trim().replace(/\s/g, "");
+    if (!phone) return res.json({ data: { inUse: false } });
+    const existing = await prisma.user.findFirst({ where: { phone }, select: { id: true } });
+    return res.json({ data: { inUse: !!existing } });
+  } catch (err) { next(err); }
+};
+
+export const checkEmail = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const email = String(req.query.email || "").trim().toLowerCase();
+    if (!email) return res.json({ data: { inUse: false } });
+    const existing = await prisma.user.findUnique({ where: { email }, select: { id: true } });
+    return res.json({ data: { inUse: !!existing } });
+  } catch (err) { next(err); }
+};
+
+export const register = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const body = registerSchema.parse(req.body);
+    const { email, password, name, role } = body;
+
+    const existing = await prisma.user.findUnique({ where: { email } });
+    if (existing) return next(badRequest("Email ya en uso"));
+
+    const passwordHash = await bcrypt.hash(password, 12);
+
+    // Generate email-verification token (only for players)
+    const isPlayer = role === "player";
+    const emailVerifyToken   = isPlayer ? crypto.randomBytes(32).toString("hex") : null;
+    const emailVerifyExpires = isPlayer ? new Date(Date.now() + 24 * 60 * 60 * 1000) : null;
+
+    const user = await prisma.user.create({
+      data: {
+        email, name, passwordHash, role,
+        dni:            body.dni || null,
+        phone:          body.phone || null,
+        province:       body.province || null,
+        birthDate:      body.birthDate ? new Date(body.birthDate) : null,
+        gdprConsent:    body.gdprConsent ?? false,
+        whatsappConsent: body.whatsappConsent ?? false,
+        emailConsent:   body.emailConsent ?? false,
+        ligaCard:       body.ligaCard || null,
+        clubCard:       body.clubCard || null,
+        emailVerified:      !isPlayer, // admins/organizers are pre-verified
+        emailVerifyToken,
+        emailVerifyExpires,
+      },
+    });
+
+    // Create empty stats for new player
+    await prisma.playerStats.create({ data: { userId: user.id } });
+
+    // Send welcome + verification email (non-blocking)
+    if (isPlayer && emailVerifyToken) {
+      const clientUrl = process.env.CLIENT_URL || "http://localhost:3000";
+      const verifyUrl = `${clientUrl}/verificar-email?token=${emailVerifyToken}`;
+      sendWelcomeVerification({ to: email, name, verifyUrl }).catch(err =>
+        console.error("[email] Failed to send welcome email:", err)
+      );
+    }
+
+    // Players must verify their email before getting tokens.
+    // Organizers/admins are pre-verified so they get tokens immediately.
+    if (isPlayer) {
+      return res.status(201).json({
+        data: {
+          user: {
+            id: user.id, email: user.email, name: user.name, role: user.role,
+            elo: user.elo, createdAt: user.createdAt,
+            emailVerified: false,
+          },
+          requiresEmailVerification: true,
+          // No tokens — player must verify email and then log in
+        },
+      });
+    }
+
+    const payload = { userId: user.id, role: user.role };
+    const accessToken = signAccessToken(payload);
+    const refreshToken = signRefreshToken(payload);
+
+    const expiresAt = new Date(Date.now() + COOKIE_MAX_AGE);
+    await prisma.refreshToken.create({ data: { token: refreshToken, userId: user.id, expiresAt } });
+
+    setRefreshCookie(res, refreshToken);
+
+    return res.status(201).json({
+      data: {
+        user: {
+          id: user.id, email: user.email, name: user.name, role: user.role,
+          elo: user.elo, createdAt: user.createdAt,
+          emailVerified: user.emailVerified,
+        },
+        tokens: { accessToken },
+        requiresEmailVerification: false,
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ─── Verify email ─────────────────────────────────────────────────────────────
+export const verifyEmail = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const token = String(req.query.token || "").trim();
+    if (!token) return next(badRequest("Token requerido"));
+
+    const user = await prisma.user.findUnique({ where: { emailVerifyToken: token } });
+    if (!user) return next(badRequest("Enlace inválido o ya utilizado"));
+    if (user.emailVerifyExpires && user.emailVerifyExpires < new Date()) {
+      return next(badRequest("El enlace ha caducado. Solicita uno nuevo."));
+    }
+
+    await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        emailVerified:      true,
+        emailVerifyToken:   null,
+        emailVerifyExpires: null,
+      },
+    });
+
+    return res.json({ data: { verified: true, name: user.name } });
+  } catch (err) { next(err); }
+};
+
+// ─── Request verification email (public — email in body, no token needed) ────
+export const requestVerification = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { email } = z.object({ email: z.string().email() }).parse(req.body);
+
+    const user = await prisma.user.findUnique({ where: { email } });
+    // Always return 200 to avoid leaking whether the email exists
+    if (!user || user.emailVerified) {
+      return res.json({ data: { message: "Si la dirección es correcta recibirás el email en breve" } });
+    }
+
+    const emailVerifyToken   = crypto.randomBytes(32).toString("hex");
+    const emailVerifyExpires = new Date(Date.now() + 24 * 60 * 60 * 1000);
+
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { emailVerifyToken, emailVerifyExpires },
+    });
+
+    const clientUrl = process.env.CLIENT_URL || "http://localhost:3000";
+    const verifyUrl = `${clientUrl}/verificar-email?token=${emailVerifyToken}`;
+    await sendWelcomeVerification({ to: user.email, name: user.name, verifyUrl });
+
+    return res.json({ data: { message: "Si la dirección es correcta recibirás el email en breve" } });
+  } catch (err) { next(err); }
+};
+
+// ─── Resend verification email ────────────────────────────────────────────────
+export const resendVerification = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const authReq = req as AuthRequest;
+    const userId = authReq.user?.userId;
+    if (!userId) return next(unauthorized("No autenticado"));
+
+    const user = await prisma.user.findUnique({ where: { id: userId } });
+    if (!user) return next(notFound("Usuario"));
+    if (user.emailVerified) return res.json({ data: { message: "Email ya verificado" } });
+
+    const emailVerifyToken   = crypto.randomBytes(32).toString("hex");
+    const emailVerifyExpires = new Date(Date.now() + 24 * 60 * 60 * 1000);
+
+    await prisma.user.update({
+      where: { id: userId },
+      data: { emailVerifyToken, emailVerifyExpires },
+    });
+
+    const clientUrl = process.env.CLIENT_URL || "http://localhost:3000";
+    const verifyUrl = `${clientUrl}/verificar-email?token=${emailVerifyToken}`;
+    await sendWelcomeVerification({ to: user.email, name: user.name, verifyUrl });
+
+    return res.json({ data: { message: "Email de verificación reenviado" } });
+  } catch (err) { next(err); }
+};
+
+export const login = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { email, password } = loginSchema.parse(req.body);
+
+    const user = await prisma.user.findUnique({ where: { email } });
+    if (!user) return next(unauthorized("Invalid credentials"));
+
+    const valid = await bcrypt.compare(password, user.passwordHash);
+    if (!valid) return next(unauthorized("Invalid credentials"));
+
+    // Players must verify their email before logging in
+    if (!user.emailVerified) {
+      return res.status(403).json({
+        error: "EMAIL_NOT_VERIFIED",
+        message: "Debes verificar tu email antes de iniciar sesión. Revisa tu bandeja de entrada.",
+      });
+    }
+
+    const payload = { userId: user.id, role: user.role };
+    const accessToken = signAccessToken(payload);
+    const refreshToken = signRefreshToken(payload);
+
+    const expiresAt = new Date(Date.now() + COOKIE_MAX_AGE);
+    await prisma.refreshToken.create({ data: { token: refreshToken, userId: user.id, expiresAt } });
+
+    setRefreshCookie(res, refreshToken);
+
+    return res.json({
+      data: {
+        user: { id: user.id, email: user.email, name: user.name, role: user.role, elo: user.elo, createdAt: user.createdAt },
+        tokens: { accessToken }, // refreshToken is now in httpOnly cookie only
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+export const refresh = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    // Refresh token is ONLY accepted from the httpOnly cookie — never from the request body
+    const refreshToken = (req as any).cookies?.[COOKIE_NAME];
+    if (!refreshToken) return next(unauthorized("Refresh token required"));
+
+    // Delete-first pattern: attempt to delete the token atomically.
+    // If two requests arrive simultaneously with the same token, only one
+    // succeeds here — the other gets a Prisma P2025 (record not found) and
+    // is rejected, preventing double-use without a read-then-delete race.
+    let stored;
+    try {
+      stored = await prisma.refreshToken.delete({ where: { token: refreshToken } });
+    } catch {
+      // Token not found — already consumed or never existed
+      clearRefreshCookie(res);
+      return next(unauthorized("Invalid or expired refresh token"));
+    }
+
+    if (stored.expiresAt < new Date()) {
+      clearRefreshCookie(res);
+      return next(unauthorized("Invalid or expired refresh token"));
+    }
+
+    const payload = verifyRefreshToken(refreshToken);
+    const user = await prisma.user.findUnique({ where: { id: payload.userId } });
+    if (!user) return next(notFound("User"));
+
+    // Block unverified players — clears the cookie so they must re-login after verifying
+    if (!user.emailVerified && user.role === "player") {
+      clearRefreshCookie(res);
+      return next(unauthorized("Email not verified"));
+    }
+
+    const newPayload = { userId: user.id, role: user.role };
+    const accessToken = signAccessToken(newPayload);
+    const newRefreshToken = signRefreshToken(newPayload);
+
+    const expiresAt = new Date(Date.now() + COOKIE_MAX_AGE);
+    await prisma.refreshToken.create({ data: { token: newRefreshToken, userId: user.id, expiresAt } });
+
+    setRefreshCookie(res, newRefreshToken);
+
+    // Only return accessToken — refreshToken lives in the cookie
+    return res.json({ data: { tokens: { accessToken } } });
+  } catch (err) {
+    next(err);
+  }
+};
+
+export const logout = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    // Refresh token is ONLY accepted from the httpOnly cookie — never from the request body
+    const refreshToken = (req as any).cookies?.[COOKIE_NAME];
+    if (refreshToken) {
+      await prisma.refreshToken.deleteMany({ where: { token: refreshToken } });
+    }
+    clearRefreshCookie(res);
+    return res.json({ data: null, message: "Logged out successfully" });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ─── Logout all sessions ──────────────────────────────────────────────────────
+export const logoutAll = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const authReq = req as AuthRequest;
+    const userId = authReq.user?.userId;
+    if (!userId) return next(unauthorized("No autenticado"));
+
+    // Revoke every refresh token for this user — kills all active sessions
+    await prisma.refreshToken.deleteMany({ where: { userId } });
+    clearRefreshCookie(res);
+    return res.json({ data: null, message: "Todas las sesiones cerradas" });
+  } catch (err) {
+    next(err);
+  }
+};
+
+export const me = async (req: AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    const user = await prisma.user.findUnique({
+      where: { id: req.user!.userId },
+      select: { id: true, email: true, name: true, avatarUrl: true, role: true, elo: true, createdAt: true, emailVerified: true },
+    });
+    if (!user) return next(notFound("User"));
+    return res.json({ data: user });
+  } catch (err) {
+    next(err);
+  }
+};

@@ -1,0 +1,110 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * { box-sizing: border-box; }
+
+  body {
+    @apply bg-ink-950 text-white antialiased;
+    font-family: Inter, system-ui, sans-serif;
+  }
+
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { @apply bg-ink-900; }
+  ::-webkit-scrollbar-thumb { @apply bg-ink-600 rounded-full; }
+  ::-webkit-scrollbar-thumb:hover { @apply bg-red-600; }
+
+  ::selection { @apply bg-red-600 text-white; }
+}
+
+@layer components {
+
+  /* ── Botones ─────────────────────────────────────── */
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 font-semibold rounded-lg
+           transition-all duration-150 disabled:opacity-40 disabled:cursor-not-allowed
+           focus:outline-none focus-visible:ring-2 focus-visible:ring-red-500;
+  }
+
+  .btn-primary {
+    @apply btn bg-red-500 hover:bg-red-600 active:bg-red-700
+           text-white px-4 py-2.5 shadow-red-sm hover:shadow-red-glow;
+  }
+
+  .btn-secondary {
+    @apply btn bg-ink-800 hover:bg-ink-700 active:bg-ink-600
+           text-ink-100 border border-ink-700 hover:border-ink-500 px-4 py-2.5;
+  }
+
+  .btn-ghost {
+    @apply btn text-ink-300 hover:text-white hover:bg-ink-800 px-3 py-2;
+  }
+
+  .btn-danger {
+    @apply btn bg-red-900/40 hover:bg-red-900/70 border border-red-800
+           text-red-400 hover:text-red-300 px-4 py-2.5;
+  }
+
+  /* ── Cards ───────────────────────────────────────── */
+  .card {
+    @apply bg-ink-900 border border-ink-800 rounded-xl p-6;
+  }
+
+  .card-sm {
+    @apply bg-ink-900 border border-ink-800 rounded-lg p-4;
+  }
+
+  .card-hover {
+    @apply card hover:border-ink-600 hover:bg-ink-800/80 transition-all cursor-pointer;
+  }
+
+  /* ── Inputs ──────────────────────────────────────── */
+  .input {
+    @apply w-full bg-ink-800 border border-ink-700 rounded-lg px-4 py-2.5
+           text-white placeholder-ink-500
+           focus:outline-none focus:border-red-500 focus:ring-1 focus:ring-red-500/50
+           transition-colors duration-150;
+  }
+
+  .label {
+    @apply block text-sm font-medium text-ink-300 mb-1.5;
+  }
+
+  /* ── Badges ──────────────────────────────────────── */
+  .badge {
+    @apply inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold;
+  }
+
+  .badge-red    { @apply badge bg-red-900/50 text-red-300 border border-red-800/50; }
+  .badge-green  { @apply badge bg-emerald-900/50 text-emerald-300 border border-emerald-800/50; }
+  .badge-blue   { @apply badge bg-blue-900/50 text-blue-300 border border-blue-800/50; }
+  .badge-purple { @apply badge bg-purple-900/50 text-purple-300 border border-purple-800/50; }
+  .badge-gray   { @apply badge bg-ink-800 text-ink-300 border border-ink-700; }
+
+  /* ── Divisor decorativo ──────────────────────────── */
+  .divider {
+    @apply w-full h-px bg-gradient-to-r from-transparent via-ink-700 to-transparent;
+  }
+
+  /* ── Texto degradado rojo ────────────────────────── */
+  .text-gradient {
+    @apply bg-gradient-to-r from-red-400 to-red-600 bg-clip-text text-transparent;
+  }
+
+  /* ── Glow border en rojo ─────────────────────────── */
+  .border-glow {
+    @apply border border-red-500/40 shadow-red-sm;
+  }
+}
+
+/* ── Error flash animation ───────────────────────────── */
+@keyframes error-flash {
+  0%, 100% { box-shadow: 0 0 0 0px rgba(239, 68, 68, 0); }
+  25%, 75%  { box-shadow: 0 0 0 4px rgba(239, 68, 68, 0.45); }
+}
+
+.field-error-flash {
+  animation: error-flash 0.6s ease-in-out 3;
+  border-radius: 0.75rem;
+}

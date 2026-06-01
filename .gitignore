@@ -1,0 +1,27 @@
+node_modules
+.turbo
+dist
+.next
+.expo
+
+# Environment files — never commit secrets
+.env
+.env.*
+*.env
+.env.local
+.env.*.local
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Uploads — user-generated content, not part of the codebase
+uploads/
+
+# Prisma generated client (rebuilt on deploy)
+server/node_modules/.prisma

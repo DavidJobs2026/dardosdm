@@ -1,0 +1,353 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Enums ────────────────────────────────────────────────────────────────────
+
+enum UserRole {
+  admin
+  organizer
+  player
+}
+
+enum TournamentFormat {
+  single_elimination
+  double_elimination
+  round_robin
+}
+
+enum TournamentStatus {
+  draft
+  registration
+  in_progress
+  completed
+  cancelled
+}
+
+enum MatchStatus {
+  pending
+  in_progress
+  completed
+  bye
+}
+
+enum ParticipantType {
+  individual
+  parejas
+  parejas_ciegas
+  trios
+  equipos
+}
+
+enum TeamMemberRole {
+  captain
+  member
+}
+
+// ─── Models ───────────────────────────────────────────────────────────────────
+
+model User {
+  id              String    @id @default(cuid())
+  email           String    @unique
+  passwordHash    String    @map("password_hash")
+  name            String
+  avatarUrl       String?   @map("avatar_url")
+  role            UserRole  @default(player)
+  elo             Int       @default(1000)
+  dni             String?   @unique
+  phone           String?
+  province        String?
+  birthDate       DateTime? @map("birth_date")
+  gdprConsent     Boolean   @default(false) @map("gdpr_consent")
+  whatsappConsent Boolean   @default(false) @map("whatsapp_consent")
+  emailConsent    Boolean   @default(false) @map("email_consent")
+  ligaCard        String?   @map("liga_card")  // Tarjeta liga PhoenixDarts (16 dígitos)
+  clubCard        String?   @map("club_card")  // Tarjeta club PhoenixDarts (16 dígitos)
+  emailVerified       Boolean   @default(false) @map("email_verified")
+  emailVerifyToken    String?   @unique @map("email_verify_token")
+  emailVerifyExpires  DateTime? @map("email_verify_expires")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  // Relations
+  organizedTournaments Tournament[]      @relation("OrganizerTournaments")
+  teamMemberships      TeamMember[]
+  createdTeams         Team[]            @relation("TeamCreator")
+  participants         Participant[]
+  chatMessages         ChatMessage[]
+  playerStats          PlayerStats?
+  refreshTokens        RefreshToken[]
+  pushSubscriptions    PushSubscription[]
+
+  @@map("users")
+}
+
+model RefreshToken {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  userId    String   @map("user_id")
+  expiresAt DateTime @map("expires_at")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("refresh_tokens")
+}
+
+model Team {
+  id          String   @id @default(cuid())
+  name        String
+  logoUrl     String?  @map("logo_url")
+  createdById String   @map("created_by")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  createdBy    User          @relation("TeamCreator", fields: [createdById], references: [id])
+  members      TeamMember[]
+  participants Participant[]
+
+  @@map("teams")
+}
+
+model TeamMember {
+  id          String         @id @default(cuid())
+  teamId      String         @map("team_id")
+  userId      String         @map("user_id")
+  role        TeamMemberRole @default(member)
+  metricValue Float?         @map("metric_value")
+  joinedAt    DateTime       @default(now()) @map("joined_at")
+
+  team Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([teamId, userId])
+  @@map("team_members")
+}
+
+model Tournament {
+  id              String           @id @default(cuid())
+  name            String
+  description     String?
+  format          TournamentFormat
+  status          TournamentStatus @default(draft)
+  maxParticipants Int              @map("max_participants") // 0 = sin límite
+  participantType ParticipantType  @default(individual) @map("participant_type")
+  teamSize        Int?             @map("team_size")         // for equipos: max players per team (3–7)
+  teamSizeMin     Int?             @map("team_size_min")     // for equipos: minimum required players (≤ teamSize)
+  metricPlayers   Int?             @map("metric_players")    // for equipos: how many top players count for the metric (≤ teamSize)
+  maxMetric       Float?           @map("max_metric")        // registration cap — players above this value can't sign up
+  rules           String?
+  startDate       DateTime?        @map("start_date")
+  // ── Game config ─────────────────────────────────────────────────────────────
+  gameType        String?          @map("game_type")       // "01" | "cricket" | "combo"
+  metric          String?                                   // "ppd" | "mpr" | "combined"
+  bestOf          Int              @default(3) @map("best_of")       // 1|3|5|7 — winners bracket
+  bestOfLosers    Int?             @map("best_of_losers")            // null = same as bestOf
+  winnerOnly      Boolean          @default(false) @map("winner_only") // skip score entry, report winner only
+  estimatedMatchMinutes Int         @default(15) @map("estimated_match_minutes") // alert threshold in GestionTab
+  // ── Round Robin config ──────────────────────────────────────────────────────
+  rrGroupSize      Int?             @map("rr_group_size")      // 3–8; null for non-RR
+  rrAdvancingTeams Int?             @map("rr_advancing_teams") // 2–4; null for non-RR
+  // ────────────────────────────────────────────────────────────────────────────
+  imageUrl        String?          @map("image_url")           // tournament cover photo path
+  allowPlayerReg  Boolean          @default(false) @map("allow_player_reg")
+  createdById     String           @map("created_by")
+  createdAt       DateTime         @default(now()) @map("created_at")
+  updatedAt       DateTime         @updatedAt @map("updated_at")
+
+  organizer    User               @relation("OrganizerTournaments", fields: [createdById], references: [id])
+  participants Participant[]
+  matches      Match[]
+  chatMessages ChatMessage[]
+  levels       TournamentLevel[]
+  dianas       Diana[]
+
+  @@map("tournaments")
+}
+
+// ─── Tournament level / category (Nivel I, Nivel II…) ────────────────────────
+model TournamentLevel {
+  id              String     @id @default(cuid())
+  tournamentId    String     @map("tournament_id")
+  name            String                              // "Nivel I", "Master", etc.
+  minValue        Float      @map("min_value")        // min metric value for this level
+  maxValue        Float?     @map("max_value")        // null = open top
+  maxParticipants Int?       @map("max_participants") // null = sin límite
+  order           Int                                 // display order (1 = highest)
+  bestOf          Int?       @map("best_of")          // match format for this level (odd 1-21)
+  bestOfLosers    Int?       @map("best_of_losers")   // losers bracket override (double elim)
+  createdAt       DateTime   @default(now()) @map("created_at")
+
+  tournament   Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+
+  @@map("tournament_levels")
+}
+
+model Participant {
+  id           String          @id @default(cuid())
+  tournamentId String          @map("tournament_id")
+  entityType   ParticipantType @map("entity_type")
+  // One of these will be set depending on entityType
+  userId       String?         @map("user_id")
+  teamId       String?         @map("team_id")
+  seed          Int?
+  finalRank     Int?            @map("final_rank")
+  rrGroup       String?         @map("rr_group")       // assigned group in RR tournaments ("A","B","C"…)
+  level         String?                                // historical level at time of inscription
+  metricValue   Float?          @map("metric_value")   // historical avg value at inscription (PPD/MPR/combined)
+  gamesPlayed   Int?            @map("games_played")   // games played in the selected season
+  dni           String?                                // player's DNI (stored for display)
+  teamName      String?         @map("team_name")      // team/club name (copied from PlayerRecord)
+  provincia     String?                                // province (copied from PlayerRecord)
+  paymentStatus     String?  @map("payment_status")      // "pending" | "paid"
+  paymentMethod     String?  @map("payment_method")      // "cash" | "card"
+  inscriptionStatus String   @default("confirmed") @map("inscription_status") // "confirmed"|"pending"|"rejected"
+  registeredAt      DateTime @default(now()) @map("registered_at")
+
+  tournament  Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  user        User?      @relation(fields: [userId], references: [id])
+  team        Team?      @relation(fields: [teamId], references: [id])
+  matchesAsP1 Match[]    @relation("MatchParticipant1")
+  matchesAsP2 Match[]    @relation("MatchParticipant2")
+  matchesAsP3 Match[]    @relation("MatchParticipant3")
+  wonMatches  Match[]    @relation("MatchWinner")
+
+  @@unique([tournamentId, userId])
+  @@unique([tournamentId, teamId])
+  @@map("participants")
+}
+
+model Match {
+  id             String      @id @default(cuid())
+  tournamentId   String      @map("tournament_id")
+  round          Int
+  position       Int
+  bracketSide    String?     @map("bracket_side")   // "winners" | "losers"
+  bracketLevel   String?     @map("bracket_level")  // level name for multi-level tournaments
+  participant1Id String?     @map("participant1_id")
+  participant2Id String?     @map("participant2_id")
+  participant3Id String?     @map("participant3_id")   // only set for 3-player tiebreaker matches
+  score1         Int?        @map("score1")
+  score2         Int?        @map("score2")
+  winnerId       String?     @map("winner_id")
+  status         MatchStatus @default(pending)
+  scheduledAt    DateTime?   @map("scheduled_at")
+  playedAt       DateTime?   @map("played_at")
+  createdAt      DateTime    @default(now()) @map("created_at")
+  updatedAt      DateTime    @updatedAt @map("updated_at")
+
+  // ── Round Robin tracking ──────────────────────────────────────────────────
+  rrGroup      String?     @map("rr_group")       // "A","B","C"… only for RR matches
+  reviewed     Boolean     @default(false)         // organizer approved this result
+  isTiebreaker Boolean     @default(false) @map("is_tiebreaker")
+  // ── Diana / call tracking ──────────────────────────────────────────────────
+  launch1At    DateTime?   @map("launch1_at")
+  launch2At    DateTime?   @map("launch2_at")
+  launch3At    DateTime?   @map("launch3_at")
+  noShowAt     DateTime?   @map("no_show_at")
+  noShowReason String?     @map("no_show_reason")
+
+  tournament   Tournament   @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  participant1 Participant? @relation("MatchParticipant1", fields: [participant1Id], references: [id])
+  participant2 Participant? @relation("MatchParticipant2", fields: [participant2Id], references: [id])
+  participant3 Participant? @relation("MatchParticipant3", fields: [participant3Id], references: [id])
+  winner       Participant? @relation("MatchWinner", fields: [winnerId], references: [id])
+  diana        Diana?
+
+  @@map("matches")
+}
+
+// ─── Diana (shooting target / lane) ──────────────────────────────────────────
+model Diana {
+  id           String     @id @default(cuid())
+  tournamentId String     @map("tournament_id")
+  number       Int
+  matchId      String?    @unique @map("match_id")
+  posX         Int?       @map("pos_x")
+  posY         Int?       @map("pos_y")
+  room         String?    @map("room")
+  broken       Boolean    @default(false) @map("broken")
+
+  tournament   Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  match        Match?     @relation(fields: [matchId], references: [id], onDelete: SetNull)
+
+  @@unique([tournamentId, number])
+  @@map("dianas")
+}
+
+model ChatMessage {
+  id           String   @id @default(cuid())
+  tournamentId String   @map("tournament_id")
+  matchId      String?  @map("match_id")
+  userId       String   @map("user_id")
+  content      String
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  tournament Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("chat_messages")
+}
+
+model PlayerStats {
+  id               String   @id @default(cuid())
+  userId           String   @unique @map("user_id")
+  wins             Int      @default(0)
+  losses           Int      @default(0)
+  draws            Int      @default(0)
+  tournamentsPlayed Int     @default(0) @map("tournaments_played")
+  tournamentsWon   Int      @default(0) @map("tournaments_won")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("player_stats")
+}
+
+// ─── Player historical record (from imported Excel) ───────────────────────────
+// One record per player × season × game type.
+model PlayerRecord {
+  id          String   @id @default(cuid())
+  // Identification
+  name        String
+  dni         String?                         // used as unique key when present
+  cardNumber  String?  @map("card_number")
+  // Classification
+  teamName    String?  @map("team_name")
+  grupo       String?                         // e.g. "GRUPO 001"
+  stageName   String?  @map("stage_name")     // e.g. "GRAND MASTER"
+  season      String                          // e.g. "LIGA 25-26"
+  gameType    String?  @map("game_type")      // "01" | "cricket" | "count_up" (optional)
+  // Stats
+  ppd         Float?
+  mpr         Float?
+  gamesPlayed Int?     @map("games_played")
+  combined    Float?                          // mpr*10 + ppd (computed on import)
+  level       String?                         // nivel calculado al importar
+  provincia   String?                         // provincia / región
+  // Meta
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@index([name])
+  @@index([dni])
+  @@index([season, gameType])
+  @@map("player_records")
+}
+
+model PushSubscription {
+  id        String   @id @default(cuid())
+  userId    String   @map("user_id")
+  endpoint  String   @unique
+  p256dh    String   @map("p256dh")
+  auth      String
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("push_subscriptions")
+}

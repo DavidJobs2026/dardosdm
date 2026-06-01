@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "email-preview",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["serve", "-s", ".claude", "-p", "5555", "--no-clipboard"],
+      "port": 5555
+    }
+  ]
+}
