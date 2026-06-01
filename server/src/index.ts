@@ -73,7 +73,7 @@ const apiLimiter = rateLimit({
 app.use("/uploads", (_req, res, next) => {
   res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
   next();
-}, express.static(path.join(__dirname, "../../uploads")));
+}, express.static(process.env.UPLOADS_PATH || path.join(__dirname, "../../uploads")));
 
 // ─── Routes ───────────────────────────────────────────────────────────────────
 app.use("/api/v1/auth/check-email",           enumerationLimiter); // 20/15min — prevents bulk enumeration

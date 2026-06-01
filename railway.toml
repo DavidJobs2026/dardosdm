@@ -1,0 +1,8 @@
+[build]
+builder = "NIXPACKS"
+buildCommand = "pnpm install --frozen-lockfile && pnpm --filter server build && pnpm --filter server exec prisma generate"
+
+[deploy]
+startCommand = "pnpm --filter server start"
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 3

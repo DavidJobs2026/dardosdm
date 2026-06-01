@@ -3,7 +3,9 @@ import path from "path";
 import fs from "fs";
 import { Request, Response, NextFunction, RequestHandler } from "express";
 
-const UPLOADS_DIR = path.join(__dirname, "../../../uploads/tournaments");
+const UPLOADS_DIR = process.env.UPLOADS_PATH
+  ? path.join(process.env.UPLOADS_PATH, "tournaments")
+  : path.join(__dirname, "../../../uploads/tournaments");
 
 // Ensure directory exists
 if (!fs.existsSync(UPLOADS_DIR)) {
