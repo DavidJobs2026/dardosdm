@@ -19,6 +19,6 @@ RUN pnpm --filter server exec prisma generate
 # Build server
 RUN pnpm --filter server build
 
-EXPOSE 4000
+EXPOSE ${PORT:-4000}
 
 CMD ["node", "server/dist/index.js"]
