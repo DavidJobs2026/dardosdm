@@ -100,20 +100,6 @@ export default function HomePage() {
               bg: "bg-red-900/20 border-red-900/40",
             },
             {
-              icon: <Users className="w-6 h-6" />,
-              title: "Equipos",
-              desc: "Crea equipos con roster, capitán y logo. Compite individual o por equipos.",
-              accent: "text-white",
-              bg: "bg-ink-800 border-ink-700",
-            },
-            {
-              icon: <BarChart2 className="w-6 h-6" />,
-              title: "Ranking ELO",
-              desc: "Sistema ELO que se actualiza en tiempo real tras cada victoria o derrota.",
-              accent: "text-white",
-              bg: "bg-ink-800 border-ink-700",
-            },
-            {
               icon: <Zap className="w-6 h-6" />,
               title: "Tiempo real",
               desc: "Resultados y brackets actualizados al instante con WebSockets.",
