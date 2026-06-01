@@ -90,7 +90,7 @@ export default function HomePage() {
           <p className="text-ink-400">Sin límites. Sin dependencias externas.</p>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-5 max-w-2xl mx-auto">
           {[
             {
               icon: <Trophy className="w-6 h-6" />,
