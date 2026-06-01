@@ -1,8 +1,7 @@
 [build]
-builder = "NIXPACKS"
-buildCommand = "npm install -g pnpm@11 && pnpm install --frozen-lockfile && pnpm --filter server build && pnpm --filter server exec prisma generate"
+builder = "DOCKERFILE"
+dockerfilePath = "Dockerfile"
 
 [deploy]
-startCommand = "pnpm --filter server start"
 restartPolicyType = "ON_FAILURE"
 restartPolicyMaxRetries = 3
