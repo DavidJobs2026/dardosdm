@@ -113,6 +113,53 @@ export async function sendWelcomeVerification(opts: {
                   </td>
                 </tr>
               </table>
+
+              <!-- Divider -->
+              <hr style="border:none;border-top:1px solid #27272a;margin:24px 0;" />
+
+              <!-- PWA + Notifications instructions -->
+              <p style="margin:0 0 12px;color:#e4e4e7;font-size:13px;font-weight:700;letter-spacing:.02em;">
+                📲 Instala la app y activa notificaciones
+              </p>
+              <!-- Android -->
+              <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:10px;">
+                <tr>
+                  <td style="background:#1c1c20;border:1px solid #27272a;border-radius:10px;padding:14px 16px;">
+                    <p style="margin:0 0 4px;color:#e4e4e7;font-size:13px;font-weight:600;">
+                      📱 Android (Chrome)
+                    </p>
+                    <p style="margin:0;color:#a1a1aa;font-size:12px;line-height:1.6;">
+                      Añadid la aplicación a la pantalla de inicio desde el menú de Chrome para tener un acceso directo y una mejor experiencia de uso.
+                    </p>
+                  </td>
+                </tr>
+              </table>
+              <!-- iPhone -->
+              <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:10px;">
+                <tr>
+                  <td style="background:#1c1c20;border:1px solid #27272a;border-radius:10px;padding:14px 16px;">
+                    <p style="margin:0 0 4px;color:#e4e4e7;font-size:13px;font-weight:600;">
+                      📱 iPhone (Safari)
+                    </p>
+                    <p style="margin:0;color:#a1a1aa;font-size:12px;line-height:1.6;">
+                      Pulsad el botón <strong style="color:#e4e4e7;">Compartir</strong> y seleccionad <strong style="color:#e4e4e7;">"Añadir a pantalla de inicio"</strong> para instalar el acceso directo en vuestro dispositivo.
+                    </p>
+                  </td>
+                </tr>
+              </table>
+              <!-- Notifications -->
+              <table width="100%" cellpadding="0" cellspacing="0">
+                <tr>
+                  <td style="background:#1a1010;border:1px solid #7f1d1d50;border-radius:10px;padding:14px 16px;">
+                    <p style="margin:0 0 4px;color:#fca5a5;font-size:13px;font-weight:600;">
+                      🔔 Notificaciones push
+                    </p>
+                    <p style="margin:0;color:#a1a1aa;font-size:12px;line-height:1.6;">
+                      Cuando iniciéis sesión, aparecerá un mensaje preguntando si queréis activar las notificaciones. Pulsad en <strong style="color:#e4e4e7;">"Activar"</strong> para recibir avisos importantes, llamadas y novedades al instante.
+                    </p>
+                  </td>
+                </tr>
+              </table>
             </td>
           </tr>
 
