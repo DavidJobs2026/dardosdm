@@ -16,12 +16,15 @@ export const searchUsers = async (req: AuthRequest, res: Response, next: NextFun
 
     if (!q || q.length < 1) return res.json({ data: [] });
 
-    // Find users matching the search
+    // Find users matching the search (by name OR DNI)
     const users = await prisma.user.findMany({
       where: {
-        name: { contains: q, mode: "insensitive" },
+        OR: [
+          { name: { contains: q, mode: "insensitive" } },
+          { dni:  { contains: q, mode: "insensitive" } },
+        ],
       },
-      select: { id: true, name: true, email: true, elo: true, avatarUrl: true },
+      select: { id: true, name: true, email: true, elo: true, avatarUrl: true, role: true, dni: true },
       take: 20,
       orderBy: { elo: "desc" },
     });

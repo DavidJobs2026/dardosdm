@@ -51,16 +51,58 @@ interface AppUser {
   createdAt: string;
 }
 
-// ─── Create organizer modal ───────────────────────────────────────────────────
+// ─── Create / promote organizer modal ────────────────────────────────────────
+type SearchResult = { id: string; name: string; email: string; role: string; dni?: string | null };
+
 function CreateOrganizerModal({ onClose, onCreated }: { onClose: () => void; onCreated: (u: AppUser) => void }) {
+  const [tab,      setTab]      = useState<"search" | "new">("search");
+  const [role,     setRole]     = useState<"organizer" | "admin">("organizer");
+
+  // ── Search tab state ──
+  const [query,    setQuery]    = useState("");
+  const [results,  setResults]  = useState<SearchResult[]>([]);
+  const [searching,setSearching]= useState(false);
+  const [selected, setSelected] = useState<SearchResult | null>(null);
+  const [promoting,setPromoting]= useState(false);
+
+  // ── New account tab state ──
   const [name,     setName]     = useState("");
   const [email,    setEmail]    = useState("");
   const [password, setPassword] = useState("");
-  const [role,     setRole]     = useState<"organizer" | "admin">("organizer");
   const [showPw,   setShowPw]   = useState(false);
   const [saving,   setSaving]   = useState(false);
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  // Debounced search
+  useEffect(() => {
+    if (tab !== "search") return;
+    if (query.trim().length < 2) { setResults([]); return; }
+    const t = setTimeout(async () => {
+      setSearching(true);
+      try {
+        const { data } = await api.get(`/users/search?q=${encodeURIComponent(query.trim())}`);
+        setResults((data.data as SearchResult[]).filter(u => u.role === "player"));
+      } catch { setResults([]); }
+      finally { setSearching(false); }
+    }, 300);
+    return () => clearTimeout(t);
+  }, [query, tab]);
+
+  const handlePromote = async () => {
+    if (!selected) return;
+    setPromoting(true);
+    try {
+      await api.patch(`/users/${selected.id}/role`, { role });
+      onCreated({ id: selected.id, name: selected.name, email: selected.email, role, elo: 1000, createdAt: new Date().toISOString() });
+      toast.success(`${selected.name} ahora es ${role === "admin" ? "Super Admin" : "Organizador"}`);
+      onClose();
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || "Error al asignar rol");
+    } finally {
+      setPromoting(false);
+    }
+  };
+
+  const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim() || !email.trim() || password.length < 8) {
       toast.error("Rellena todos los campos (contraseña mínimo 8 caracteres)");
@@ -79,80 +121,167 @@ function CreateOrganizerModal({ onClose, onCreated }: { onClose: () => void; onC
     }
   };
 
+  const RoleSelector = () => (
+    <div>
+      <label className="label mb-2">Rol a asignar</label>
+      <div className="grid grid-cols-2 gap-2">
+        {([
+          { value: "organizer", label: "Organizador", icon: CalendarCog, color: "red" },
+          { value: "admin",     label: "Super Admin",  icon: ShieldCheck, color: "yellow" },
+        ] as const).map(({ value, label, icon: Icon, color }) => (
+          <button key={value} type="button" onClick={() => setRole(value)}
+            className={clsx(
+              "flex items-center gap-2 p-3 rounded-xl border-2 text-sm font-semibold transition-all",
+              role === value && color === "red"    && "border-red-500 bg-red-900/15 text-white",
+              role === value && color === "yellow" && "border-yellow-500 bg-yellow-900/15 text-white",
+              role !== value && "border-ink-700 text-ink-400 hover:border-ink-500",
+            )}>
+            <Icon className={clsx("w-4 h-4", role === value && color === "red" ? "text-red-400" : role === value ? "text-yellow-400" : "text-ink-500")} />
+            {label}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
       <div className="w-full max-w-md bg-ink-900 border border-ink-700 rounded-2xl shadow-2xl">
+        {/* Header */}
         <div className="flex items-center justify-between p-5 border-b border-ink-800">
           <div>
-            <h3 className="text-white font-bold">Crear nuevo usuario</h3>
-            <p className="text-ink-400 text-xs mt-0.5">La cuenta se activará de inmediato</p>
+            <h3 className="text-white font-bold">Asignar rol</h3>
+            <p className="text-ink-400 text-xs mt-0.5">Busca un jugador existente o crea una cuenta nueva</p>
           </div>
           <button onClick={onClose} className="p-1.5 text-ink-500 hover:text-white rounded-lg hover:bg-ink-800 transition-colors">
             <X className="w-4 h-4" />
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="p-5 space-y-4">
-          {/* Role */}
-          <div>
-            <label className="label mb-2">Rol</label>
-            <div className="grid grid-cols-2 gap-2">
-              {([
-                { value: "organizer", label: "Organizador", icon: CalendarCog, color: "red" },
-                { value: "admin",     label: "Super Admin",  icon: ShieldCheck, color: "yellow" },
-              ] as const).map(({ value, label, icon: Icon, color }) => (
-                <button key={value} type="button" onClick={() => setRole(value)}
-                  className={clsx(
-                    "flex items-center gap-2 p-3 rounded-xl border-2 text-sm font-semibold transition-all",
-                    role === value && color === "red"    && "border-red-500 bg-red-900/15 text-white",
-                    role === value && color === "yellow" && "border-yellow-500 bg-yellow-900/15 text-white",
-                    role !== value && "border-ink-700 text-ink-400 hover:border-ink-500",
-                  )}>
-                  <Icon className={clsx("w-4 h-4", role === value && color === "red" ? "text-red-400" : role === value ? "text-yellow-400" : "text-ink-500")} />
-                  {label}
+        {/* Tabs */}
+        <div className="flex border-b border-ink-800">
+          {([
+            { id: "search", label: "Buscar jugador existente" },
+            { id: "new",    label: "Crear cuenta nueva" },
+          ] as const).map(({ id, label }) => (
+            <button key={id} onClick={() => setTab(id)}
+              className={clsx(
+                "flex-1 py-3 text-xs font-semibold transition-colors",
+                tab === id ? "text-white border-b-2 border-red-500" : "text-ink-500 hover:text-ink-300",
+              )}>
+              {label}
+            </button>
+          ))}
+        </div>
+
+        <div className="p-5 space-y-4">
+          {tab === "search" ? (
+            <>
+              {/* Search input */}
+              <div className="relative">
+                <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-ink-500" />
+                <input
+                  autoFocus
+                  value={query}
+                  onChange={e => { setQuery(e.target.value); setSelected(null); }}
+                  className="input pl-10"
+                  placeholder="Buscar por nombre o DNI/NIE…"
+                />
+                {searching && <Loader2 className="absolute right-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-ink-500 animate-spin" />}
+              </div>
+
+              {/* Results */}
+              {results.length > 0 && !selected && (
+                <div className="border border-ink-700 rounded-xl overflow-hidden max-h-52 overflow-y-auto">
+                  {results.map(u => (
+                    <button key={u.id} type="button" onClick={() => setSelected(u)}
+                      className="w-full flex items-center gap-3 px-4 py-3 hover:bg-ink-800 transition-colors text-left border-b border-ink-800 last:border-0">
+                      <div className="w-8 h-8 rounded-full bg-ink-700 flex items-center justify-center text-xs font-bold text-white shrink-0">
+                        {u.name.charAt(0).toUpperCase()}
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-white text-sm font-semibold truncate">{u.name}</p>
+                        <p className="text-ink-500 text-xs truncate">{u.dni ? `DNI: ${u.dni} · ` : ""}{u.email}</p>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {query.length >= 2 && !searching && results.length === 0 && !selected && (
+                <p className="text-ink-500 text-xs text-center py-2">No se encontraron jugadores</p>
+              )}
+
+              {/* Selected user */}
+              {selected && (
+                <div className="border border-red-700/40 bg-red-900/10 rounded-xl p-3 flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-full bg-red-900/40 flex items-center justify-center text-sm font-bold text-red-300 shrink-0">
+                    {selected.name.charAt(0).toUpperCase()}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-white text-sm font-semibold truncate">{selected.name}</p>
+                    <p className="text-ink-400 text-xs truncate">{selected.email}</p>
+                  </div>
+                  <button type="button" onClick={() => { setSelected(null); setQuery(""); }}
+                    className="text-ink-500 hover:text-white transition-colors shrink-0">
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+              )}
+
+              <RoleSelector />
+
+              <div className="flex gap-2 pt-1">
+                <button type="button" onClick={onClose}
+                  className="flex-1 px-4 py-2.5 rounded-xl border border-ink-700 text-ink-300 text-sm font-semibold hover:text-white transition-colors">
+                  Cancelar
                 </button>
-              ))}
-            </div>
-          </div>
-
-          <div>
-            <label className="label">Nombre</label>
-            <input value={name} onChange={e => setName(e.target.value)} className="input" placeholder="Nombre completo" />
-          </div>
-
-          <div>
-            <label className="label">Email</label>
-            <input value={email} onChange={e => setEmail(e.target.value)} type="email" className="input" placeholder="correo@ejemplo.com" />
-          </div>
-
-          <div>
-            <label className="label">Contraseña</label>
-            <div className="relative">
-              <input
-                value={password}
-                onChange={e => setPassword(e.target.value)}
-                type={showPw ? "text" : "password"}
-                className="input pr-10"
-                placeholder="Mínimo 8 caracteres"
-              />
-              <button type="button" onClick={() => setShowPw(v => !v)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-ink-500 hover:text-white transition-colors">
-                {showPw ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-              </button>
-            </div>
-          </div>
-
-          <div className="flex gap-2 pt-2">
-            <button type="button" onClick={onClose}
-              className="flex-1 px-4 py-2.5 rounded-xl border border-ink-700 text-ink-300 text-sm font-semibold hover:text-white transition-colors">
-              Cancelar
-            </button>
-            <button type="submit" disabled={saving}
-              className="flex-1 btn-primary py-2.5 text-sm disabled:opacity-50">
-              {saving ? <Loader2 className="w-4 h-4 animate-spin mx-auto" /> : "Crear cuenta"}
-            </button>
-          </div>
-        </form>
+                <button type="button" onClick={handlePromote} disabled={!selected || promoting}
+                  className="flex-1 btn-primary py-2.5 text-sm disabled:opacity-50">
+                  {promoting ? <Loader2 className="w-4 h-4 animate-spin mx-auto" /> : "Asignar rol"}
+                </button>
+              </div>
+            </>
+          ) : (
+            <form onSubmit={handleCreate} className="space-y-4">
+              <RoleSelector />
+              <div>
+                <label className="label">Nombre</label>
+                <input value={name} onChange={e => setName(e.target.value)} className="input" placeholder="Nombre completo" />
+              </div>
+              <div>
+                <label className="label">Email</label>
+                <input value={email} onChange={e => setEmail(e.target.value)} type="email" className="input" placeholder="correo@ejemplo.com" />
+              </div>
+              <div>
+                <label className="label">Contraseña</label>
+                <div className="relative">
+                  <input
+                    value={password}
+                    onChange={e => setPassword(e.target.value)}
+                    type={showPw ? "text" : "password"}
+                    className="input pr-10"
+                    placeholder="Mínimo 8 caracteres"
+                  />
+                  <button type="button" onClick={() => setShowPw(v => !v)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-ink-500 hover:text-white transition-colors">
+                    {showPw ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+              </div>
+              <div className="flex gap-2 pt-1">
+                <button type="button" onClick={onClose}
+                  className="flex-1 px-4 py-2.5 rounded-xl border border-ink-700 text-ink-300 text-sm font-semibold hover:text-white transition-colors">
+                  Cancelar
+                </button>
+                <button type="submit" disabled={saving}
+                  className="flex-1 btn-primary py-2.5 text-sm disabled:opacity-50">
+                  {saving ? <Loader2 className="w-4 h-4 animate-spin mx-auto" /> : "Crear cuenta"}
+                </button>
+              </div>
+            </form>
+          )}
+        </div>
       </div>
     </div>
   );
