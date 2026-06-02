@@ -932,7 +932,7 @@ function PlayerManagement() {
 
             {/* Info */}
             <div className="flex-1 min-w-0">
-              <p className="text-white font-semibold text-sm truncate">{p.name}</p>
+              <p className="text-white font-semibold text-sm truncate">{p.name.toUpperCase()}</p>
               <div className="flex items-center gap-3 mt-0.5 flex-wrap">
                 <span className="text-ink-500 text-xs truncate">{p.email}</span>
                 {p.dni && (
