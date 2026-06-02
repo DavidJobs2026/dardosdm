@@ -22,7 +22,12 @@ api.interceptors.response.use(
   (res) => res,
   async (error) => {
     const original = error.config;
-    if (error.response?.status === 401 && !original._retry) {
+
+    // Never try to auto-refresh if the failing request IS the refresh endpoint —
+    // that would create an infinite loop (refresh fails → retry refresh → fails → …)
+    // Also skip if we already retried once.
+    const isRefreshRequest = original?.url?.includes("/auth/refresh");
+    if (error.response?.status === 401 && !original._retry && !isRefreshRequest) {
       original._retry = true;
       try {
         // No need to send the refresh token manually — it arrives via cookie
