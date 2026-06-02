@@ -1,5 +1,5 @@
 import { IRouter, Router } from "express";
-import { searchUsers, getMyProfile, batchCreateUsers, findOrCreatePlayer, listPlayers, listUsers, updateUserRole, updateUserName, updateUserPassword, updateUserProfile, resetPasswordToDni, deleteUser, getAuditLogs } from "../controllers/user.controller";
+import { searchUsers, getMyProfile, batchCreateUsers, findOrCreatePlayer, listPlayers, listUsers, updateUserRole, updateUserName, updateUserPassword, updateUserProfile, resetPasswordToDni, deleteUser, getAuditLogs, absorbGhost } from "../controllers/user.controller";
 import { authenticate } from "../middlewares/auth.middleware";
 
 const router: IRouter = Router();
@@ -16,6 +16,7 @@ router.post("/find-or-create",     authenticate, findOrCreatePlayer);
 router.patch("/:id/role",          authenticate, updateUserRole);
 router.patch("/:id/name",          authenticate, updateUserName);
 router.patch("/:id/password",      authenticate, updateUserPassword);
+router.post("/:id/absorb-ghost",   authenticate, absorbGhost);
 router.delete("/:id",              authenticate, deleteUser);
 
 export default router;

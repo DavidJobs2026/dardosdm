@@ -114,12 +114,6 @@ export const register = async (req: Request, res: Response, next: NextFunction) 
     const existing = await prisma.user.findUnique({ where: { email } });
     if (existing) return next(badRequest("Email ya en uso"));
 
-    // Check DNI uniqueness — even if previous account is unverified
-    if (dni) {
-      const dniUsed = await prisma.user.findUnique({ where: { dni } });
-      if (dniUsed) return next(badRequest("El DNI/NIE ya está registrado. Si no recibiste el email de verificación, usa el enlace de reenvío en la pantalla de login."));
-    }
-
     const passwordHash = await bcrypt.hash(password, 12);
 
     // Generate email-verification token (only for players)
@@ -127,26 +121,49 @@ export const register = async (req: Request, res: Response, next: NextFunction) 
     const emailVerifyToken   = isPlayer ? crypto.randomBytes(32).toString("hex") : null;
     const emailVerifyExpires = isPlayer ? new Date(Date.now() + 24 * 60 * 60 * 1000) : null;
 
-    const user = await prisma.user.create({
-      data: {
-        email, name, passwordHash, role,
-        dni,
-        phone:          body.phone || null,
-        province:       body.province || null,
-        birthDate:      body.birthDate ? new Date(body.birthDate) : null,
-        gdprConsent:    body.gdprConsent ?? false,
-        whatsappConsent: body.whatsappConsent ?? false,
-        emailConsent:   body.emailConsent ?? false,
-        ligaCard:       body.ligaCard || null,
-        clubCard:       body.clubCard || null,
-        emailVerified:      !isPlayer, // admins/organizers are pre-verified
-        emailVerifyToken,
-        emailVerifyExpires,
-      },
-    });
+    const commonData = {
+      email, name, passwordHash, role, dni,
+      phone:           body.phone || null,
+      province:        body.province || null,
+      birthDate:       body.birthDate ? new Date(body.birthDate) : null,
+      gdprConsent:     body.gdprConsent ?? false,
+      whatsappConsent: body.whatsappConsent ?? false,
+      emailConsent:    body.emailConsent ?? false,
+      ligaCard:        body.ligaCard || null,
+      clubCard:        body.clubCard || null,
+      emailVerified:      !isPlayer,
+      emailVerifyToken,
+      emailVerifyExpires,
+    };
 
-    // Create empty stats for new player
-    await prisma.playerStats.create({ data: { userId: user.id } });
+    type UserRow = { id: string; email: string; name: string; role: string; elo: number; createdAt: Date; emailVerified: boolean };
+    const userSelect = { id: true, email: true, name: true, role: true, elo: true, createdAt: true, emailVerified: true } as const;
+    let user: UserRow;
+    let isNewAccount = true;
+
+    // If there's a ghost account with the same DNI (@torneo.local), absorb it.
+    // All historical participant records stay linked because we keep the same id.
+    if (dni) {
+      const ghostEmail = `${dni.toLowerCase().replace(/[^a-z0-9]/g, "")}@torneo.local`;
+      const ghost = await prisma.user.findUnique({ where: { email: ghostEmail } });
+      if (ghost) {
+        user = await prisma.user.update({ where: { id: ghost.id }, data: commonData, select: userSelect });
+        isNewAccount = false;
+        console.log(`[register] absorbed ghost ${ghost.id} (${ghostEmail}) → real account ${email}`);
+      } else {
+        // DNI used by a real (non-ghost) account → block
+        const dniUsed = await prisma.user.findUnique({ where: { dni } });
+        if (dniUsed) return next(badRequest("El DNI/NIE ya está registrado. Si no recibiste el email de verificación, usa el enlace de reenvío en la pantalla de login."));
+        user = await prisma.user.create({ data: commonData, select: userSelect });
+      }
+    } else {
+      user = await prisma.user.create({ data: commonData, select: userSelect });
+    }
+
+    // Create empty stats only for truly new accounts (ghost already has stats row)
+    if (isNewAccount) {
+      await prisma.playerStats.create({ data: { userId: user.id } }).catch(() => {});
+    }
 
     // Send welcome + verification email (non-blocking)
     if (isPlayer && emailVerifyToken) {

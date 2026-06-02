@@ -4,7 +4,7 @@ import crypto from "crypto";
 import { prisma } from "../lib/prisma";
 import { AuthRequest } from "../middlewares/auth.middleware";
 import bcrypt from "bcryptjs";
-import { badRequest, forbidden } from "../utils/errors";
+import { badRequest, forbidden, notFound } from "../utils/errors";
 import { Prisma } from "@prisma/client";
 import { audit } from "../lib/audit";
 
@@ -234,14 +234,30 @@ export const findOrCreatePlayer = async (req: AuthRequest, res: Response, next: 
     let user: { id: string; name: string } | null = null;
 
     if (dni) {
-      const slug = dni.trim().toLowerCase().replace(/[^a-z0-9]/g, "");
+      const dniNorm = dni.trim().toUpperCase();
+      // 1. Prefer real account (has actual email, not @torneo.local)
       user = await prisma.user.findFirst({
-        where: { email: `${slug}@torneo.local` },
+        where: { dni: dniNorm, NOT: { email: { endsWith: "@torneo.local" } } },
         select: { id: true, name: true },
       });
+      // 2. Fall back to ghost account
+      if (!user) {
+        const slug = dniNorm.toLowerCase().replace(/[^a-z0-9]/g, "");
+        user = await prisma.user.findFirst({
+          where: { email: `${slug}@torneo.local` },
+          select: { id: true, name: true },
+        });
+      }
     }
     if (!user) {
+      // Try real account by exact name first
       user = await prisma.user.findFirst({
+        where: {
+          name: { equals: name.trim(), mode: "insensitive" },
+          NOT: { email: { endsWith: "@torneo.local" } },
+        },
+        select: { id: true, name: true },
+      }) ?? await prisma.user.findFirst({
         where: { name: { equals: name.trim(), mode: "insensitive" } },
         select: { id: true, name: true },
       });
@@ -506,5 +522,56 @@ export const deleteUser = async (req: AuthRequest, res: Response, next: NextFunc
 
     await prisma.user.delete({ where: { id: req.params.id } });
     return res.json({ message: "Usuario eliminado" });
+  } catch (err) { next(err); }
+};
+
+/** POST /users/:id/absorb-ghost — merge a @torneo.local ghost into a real user account */
+// Finds the ghost account with the same DNI as the real user and reassigns all
+// participant records from ghost → real. Then deletes the ghost.
+export const absorbGhost = async (req: AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    if (req.user!.role === "player") return next(forbidden());
+
+    const realUser = await prisma.user.findUnique({
+      where: { id: req.params.id },
+      select: { id: true, name: true, dni: true, email: true },
+    });
+    if (!realUser) return next(notFound("Usuario"));
+    if (realUser.email.endsWith("@torneo.local")) return next(badRequest("El usuario destino no puede ser un jugador fantasma"));
+
+    // Find ghost: either by explicit ghostId param or by DNI
+    const ghostId = req.body?.ghostId as string | undefined;
+    let ghost: { id: string; email: string } | null = null;
+
+    if (ghostId) {
+      ghost = await prisma.user.findUnique({ where: { id: ghostId }, select: { id: true, email: true } });
+      if (!ghost?.email.endsWith("@torneo.local")) return next(badRequest("El usuario a fusionar no es un jugador fantasma"));
+    } else if (realUser.dni) {
+      const slug = realUser.dni.toLowerCase().replace(/[^a-z0-9]/g, "");
+      ghost = await prisma.user.findUnique({ where: { email: `${slug}@torneo.local` }, select: { id: true, email: true } });
+    }
+
+    if (!ghost) return next(badRequest("No se encontró un jugador fantasma con ese DNI para fusionar"));
+
+    // Reassign participant records from ghost → real user (skip duplicates per tournament)
+    const ghostParticipants = await prisma.participant.findMany({
+      where: { userId: ghost.id },
+      select: { id: true, tournamentId: true },
+    });
+
+    for (const gp of ghostParticipants) {
+      const conflict = await prisma.participant.findFirst({
+        where: { userId: realUser.id, tournamentId: gp.tournamentId },
+      });
+      if (!conflict) {
+        await prisma.participant.update({ where: { id: gp.id }, data: { userId: realUser.id } });
+      }
+      // If conflict exists, leave the ghost participant (real user already inscribed in that tournament)
+    }
+
+    // Delete ghost account (cascade deletes remaining participants tied to ghost)
+    await prisma.user.delete({ where: { id: ghost.id } });
+
+    return res.json({ message: `Jugador fantasma fusionado con ${realUser.name}. El historial de partidas ha sido transferido.` });
   } catch (err) { next(err); }
 };

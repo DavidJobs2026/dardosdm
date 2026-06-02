@@ -836,6 +836,7 @@ function PlayerManagement() {
   const [confirmReset,  setConfirmReset]  = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   const [deleting,      setDeleting]      = useState(false);
+  const [absorbing,     setAbsorbing]     = useState<string | null>(null);
 
   useEffect(() => {
     api.get("/users/players")
@@ -859,6 +860,25 @@ function PlayerManagement() {
       toast.error(err.response?.data?.message || "Error al restablecer");
     } finally {
       setResetting(null);
+    }
+  };
+
+  const handleAbsorbGhost = async (realPlayer: PlayerProfile) => {
+    if (!realPlayer.dni) {
+      toast.error("El jugador no tiene DNI. Añádelo primero para poder fusionar.");
+      return;
+    }
+    setAbsorbing(realPlayer.id);
+    try {
+      const { data } = await api.post(`/users/${realPlayer.id}/absorb-ghost`, {});
+      // Remove the ghost from the list (it was deleted) and refresh
+      const { data: fresh } = await api.get("/users/players");
+      setPlayers(fresh.data);
+      toast.success(data.message);
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || "Error al fusionar");
+    } finally {
+      setAbsorbing(null);
     }
   };
 
@@ -951,6 +971,17 @@ function PlayerManagement() {
               </div>
             ) : (
               <div className="flex items-center gap-1.5 shrink-0">
+                {/* Fusionar fantasma → usuario real (solo en cuentas reales con DNI que tengan fantasma) */}
+                {!p.email.endsWith("@torneo.local") && p.dni && (
+                  <button
+                    onClick={() => handleAbsorbGhost(p)}
+                    disabled={absorbing === p.id}
+                    className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-semibold border border-blue-700/40 text-blue-400 hover:bg-blue-900/20 transition-all disabled:opacity-50"
+                    title="Fusionar histórico del jugador fantasma con este usuario">
+                    {absorbing === p.id ? <Loader2 className="w-3 h-3 animate-spin" /> : "⇄"}
+                    <span className="hidden sm:inline">Fusionar</span>
+                  </button>
+                )}
                 {/* Edit */}
                 <button onClick={() => setEditingPlayer(p)}
                   className="p-1.5 rounded-lg text-ink-600 hover:text-white hover:bg-ink-800 border border-transparent hover:border-ink-700 transition-all"
