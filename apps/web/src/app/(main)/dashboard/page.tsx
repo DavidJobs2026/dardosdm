@@ -10,6 +10,7 @@ import {
   Plus, Trophy, Users, Play, CheckCircle, ArrowRight, Swords,
   ShieldCheck, CalendarCog, Trash2, ChevronDown, Loader2, UserPlus, X, Eye, EyeOff, Pencil, KeyRound,
   UserCog, RotateCcw, Phone, MapPin, CreditCard, Search, ClipboardList, ChevronLeft, ChevronRight,
+  GitMerge, AlertTriangle, CheckCircle2, History,
 } from "lucide-react";
 import { clsx } from "clsx";
 import toast from "react-hot-toast";
@@ -827,6 +828,239 @@ function EditPlayerModal({ player, onClose, onSaved }: {
   );
 }
 
+// ─── Absorb ghost preview modal ───────────────────────────────────────────────
+interface GhostParticipant {
+  id: string;
+  finalPosition: number | null;
+  registeredAt: string;
+  conflict: boolean;
+  tournament: { id: string; name: string; status: string; startDate: string | null };
+}
+interface GhostData {
+  id: string;
+  name: string;
+  email: string;
+  elo: number;
+  createdAt: string;
+  participants: GhostParticipant[];
+}
+
+function AbsorbGhostModal({
+  player,
+  onClose,
+  onMerged,
+}: {
+  player: PlayerProfile;
+  onClose: () => void;
+  onMerged: () => void;
+}) {
+  const [loading,   setLoading]   = useState(true);
+  const [ghost,     setGhost]     = useState<GhostData | null>(null);
+  const [transfer,  setTransfer]  = useState(0);
+  const [conflicts, setConflicts] = useState(0);
+  const [merging,   setMerging]   = useState(false);
+
+  useEffect(() => {
+    api.get(`/users/${player.id}/ghost-preview`)
+      .then(({ data }) => {
+        setGhost(data.data.ghost ?? null);
+        setTransfer(data.data.transferCount ?? 0);
+        setConflicts(data.data.conflictCount ?? 0);
+      })
+      .catch(() => toast.error("Error al cargar el jugador fantasma"))
+      .finally(() => setLoading(false));
+  }, [player.id]);
+
+  const handleMerge = async () => {
+    setMerging(true);
+    try {
+      const { data } = await api.post(`/users/${player.id}/absorb-ghost`, {});
+      toast.success(data.message);
+      onMerged();
+      onClose();
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || "Error al fusionar");
+    } finally {
+      setMerging(false);
+    }
+  };
+
+  const fmtDate = (iso: string | null) =>
+    iso ? new Date(iso).toLocaleDateString("es-ES", { day: "numeric", month: "short", year: "numeric" }) : "—";
+
+  return (
+    <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+      <div className="w-full max-w-xl bg-ink-900 border border-ink-700 rounded-2xl shadow-2xl flex flex-col" style={{ maxHeight: "85vh" }}>
+
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-ink-800 shrink-0">
+          <div className="flex items-center gap-2.5">
+            <GitMerge className="w-5 h-5 text-blue-400" />
+            <div>
+              <h3 className="text-white font-bold">Fusionar jugador fantasma</h3>
+              <p className="text-ink-500 text-xs mt-0.5">
+                Revisa los datos antes de confirmar
+              </p>
+            </div>
+          </div>
+          <button onClick={onClose} className="p-1.5 text-ink-500 hover:text-white rounded-lg hover:bg-ink-800 transition-colors">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        <div className="overflow-y-auto p-5 space-y-4 flex-1">
+          {loading ? (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="w-6 h-6 text-ink-500 animate-spin" />
+            </div>
+          ) : !ghost ? (
+            <div className="text-center py-10 space-y-2">
+              <p className="text-ink-400">No se encontró ningún jugador fantasma con DNI <span className="font-mono text-white">{player.dni}</span>.</p>
+              <p className="text-ink-600 text-xs">El historial ya está fusionado o nunca se creó un jugador con ese DNI.</p>
+            </div>
+          ) : (
+            <>
+              {/* Comparison: ghost ←→ real */}
+              <div className="grid grid-cols-2 gap-3">
+                {/* Ghost card */}
+                <div className="bg-ink-800 border border-ink-700 rounded-xl p-4 space-y-2">
+                  <div className="flex items-center gap-2 mb-3">
+                    <div className="w-7 h-7 rounded-full bg-ink-600 flex items-center justify-center text-xs font-bold text-ink-300">
+                      {ghost.name[0]}
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-ink-300 text-xs font-bold truncate">{ghost.name}</p>
+                      <p className="text-ink-600 text-[10px] truncate">Jugador importado</p>
+                    </div>
+                  </div>
+                  <div className="space-y-1 text-xs">
+                    <div className="flex justify-between">
+                      <span className="text-ink-500">ELO</span>
+                      <span className="text-ink-300 font-mono">{ghost.elo}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-ink-500">Torneos</span>
+                      <span className="text-ink-300 font-mono">{ghost.participants.length}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-ink-500">Creado</span>
+                      <span className="text-ink-300">{fmtDate(ghost.createdAt)}</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Real card */}
+                <div className="bg-ink-800 border border-blue-700/40 rounded-xl p-4 space-y-2">
+                  <div className="flex items-center gap-2 mb-3">
+                    <div className="w-7 h-7 rounded-full bg-blue-900/50 flex items-center justify-center text-xs font-bold text-blue-300">
+                      {player.name[0]}
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-white text-xs font-bold truncate">{player.name}</p>
+                      <p className="text-blue-400/70 text-[10px] truncate">Cuenta registrada ✓</p>
+                    </div>
+                  </div>
+                  <div className="space-y-1 text-xs">
+                    <div className="flex justify-between">
+                      <span className="text-ink-500">Email</span>
+                      <span className="text-ink-300 truncate max-w-[100px]" title={player.email}>{player.email}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-ink-500">DNI</span>
+                      <span className="text-ink-300 font-mono">{player.dni}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-ink-500">Provincia</span>
+                      <span className="text-ink-300">{player.province || "—"}</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* What will happen summary */}
+              <div className="bg-ink-800/60 border border-ink-700 rounded-xl p-4 space-y-2">
+                <p className="text-xs font-semibold text-ink-300 uppercase tracking-wider mb-3">Resultado de la fusión</p>
+                <div className="flex items-start gap-2 text-sm">
+                  <CheckCircle2 className="w-4 h-4 text-green-400 shrink-0 mt-0.5" />
+                  <span className="text-ink-300">
+                    <span className="text-white font-semibold">{transfer} torneo{transfer !== 1 ? "s" : ""}</span>
+                    {" "}se transferir{transfer !== 1 ? "án" : "á"} al historial de <span className="text-white font-semibold">{player.name}</span>
+                  </span>
+                </div>
+                {conflicts > 0 && (
+                  <div className="flex items-start gap-2 text-sm">
+                    <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                    <span className="text-ink-300">
+                      <span className="text-amber-300 font-semibold">{conflicts} torneo{conflicts !== 1 ? "s" : ""} en conflicto</span>
+                      {" "}(ya inscrito como cuenta real — se descartará la entrada del fantasma)
+                    </span>
+                  </div>
+                )}
+                <div className="flex items-start gap-2 text-sm">
+                  <Trash2 className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
+                  <span className="text-ink-300">El jugador fantasma <span className="text-ink-400 font-mono text-xs">{ghost.email}</span> se eliminará</span>
+                </div>
+              </div>
+
+              {/* Tournament list */}
+              {ghost.participants.length > 0 && (
+                <div>
+                  <p className="text-xs font-semibold text-ink-400 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                    <History className="w-3.5 h-3.5" /> Historial del jugador fantasma
+                  </p>
+                  <div className="space-y-1.5 max-h-44 overflow-y-auto pr-1">
+                    {ghost.participants.map(gp => (
+                      <div key={gp.id}
+                        className={clsx(
+                          "flex items-center gap-3 px-3 py-2 rounded-lg text-xs border",
+                          gp.conflict
+                            ? "bg-amber-900/10 border-amber-800/30"
+                            : "bg-ink-800 border-ink-700"
+                        )}>
+                        <span className={clsx(
+                          "w-2 h-2 rounded-full shrink-0",
+                          gp.conflict ? "bg-amber-500" : "bg-green-500"
+                        )} />
+                        <span className="flex-1 text-ink-300 truncate">{gp.tournament.name}</span>
+                        {gp.finalPosition && (
+                          <span className="text-ink-500 shrink-0">#{gp.finalPosition}</span>
+                        )}
+                        <span className="text-ink-600 shrink-0">{fmtDate(gp.tournament.startDate)}</span>
+                        {gp.conflict && (
+                          <span className="text-amber-500 font-semibold shrink-0">conflicto</span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="px-5 pb-5 pt-3 border-t border-ink-800 shrink-0 flex gap-2">
+          <button onClick={onClose}
+            className="flex-1 px-4 py-2.5 rounded-xl border border-ink-700 text-ink-300 text-sm font-semibold hover:text-white transition-colors">
+            Cancelar
+          </button>
+          {ghost && (
+            <button
+              onClick={handleMerge}
+              disabled={merging}
+              className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-sm font-bold transition-colors disabled:opacity-50">
+              {merging
+                ? <Loader2 className="w-4 h-4 animate-spin" />
+                : <><GitMerge className="w-4 h-4" /> Confirmar fusión</>
+              }
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Player management panel ──────────────────────────────────────────────────
 function PlayerManagement() {
   const [players,       setPlayers]       = useState<PlayerProfile[]>([]);
@@ -835,9 +1069,9 @@ function PlayerManagement() {
   const [editingPlayer, setEditingPlayer] = useState<PlayerProfile | null>(null);
   const [resetting,     setResetting]     = useState<string | null>(null);
   const [confirmReset,  setConfirmReset]  = useState<string | null>(null);
-  const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
-  const [deleting,      setDeleting]      = useState(false);
-  const [absorbing,     setAbsorbing]     = useState<string | null>(null);
+  const [confirmDelete,    setConfirmDelete]    = useState<string | null>(null);
+  const [deleting,         setDeleting]         = useState(false);
+  const [mergingPlayer,    setMergingPlayer]    = useState<PlayerProfile | null>(null);
 
   useEffect(() => {
     api.get("/users/players")
@@ -864,23 +1098,17 @@ function PlayerManagement() {
     }
   };
 
-  const handleAbsorbGhost = async (realPlayer: PlayerProfile) => {
-    if (!realPlayer.dni) {
+  const handleOpenMerge = (player: PlayerProfile) => {
+    if (!player.dni) {
       toast.error("El jugador no tiene DNI. Añádelo primero para poder fusionar.");
       return;
     }
-    setAbsorbing(realPlayer.id);
-    try {
-      const { data } = await api.post(`/users/${realPlayer.id}/absorb-ghost`, {});
-      // Remove the ghost from the list (it was deleted) and refresh
-      const { data: fresh } = await api.get("/users/players");
-      setPlayers(fresh.data);
-      toast.success(data.message);
-    } catch (err: any) {
-      toast.error(err.response?.data?.message || "Error al fusionar");
-    } finally {
-      setAbsorbing(null);
-    }
+    setMergingPlayer(player);
+  };
+
+  const handleMerged = async () => {
+    const { data } = await api.get("/users/players");
+    setPlayers(data.data);
   };
 
   const handleDeletePlayer = async (playerId: string) => {
@@ -972,14 +1200,13 @@ function PlayerManagement() {
               </div>
             ) : (
               <div className="flex items-center gap-1.5 shrink-0">
-                {/* Fusionar fantasma → usuario real (solo en cuentas reales con DNI que tengan fantasma) */}
+                {/* Fusionar fantasma → usuario real (solo en cuentas reales con DNI) */}
                 {!p.email.endsWith("@torneo.local") && p.dni && (
                   <button
-                    onClick={() => handleAbsorbGhost(p)}
-                    disabled={absorbing === p.id}
-                    className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-semibold border border-blue-700/40 text-blue-400 hover:bg-blue-900/20 transition-all disabled:opacity-50"
+                    onClick={() => handleOpenMerge(p)}
+                    className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-semibold border border-blue-700/40 text-blue-400 hover:bg-blue-900/20 transition-all"
                     title="Fusionar histórico del jugador fantasma con este usuario">
-                    {absorbing === p.id ? <Loader2 className="w-3 h-3 animate-spin" /> : "⇄"}
+                    <GitMerge className="w-3 h-3" />
                     <span className="hidden sm:inline">Fusionar</span>
                   </button>
                 )}
@@ -1031,6 +1258,15 @@ function PlayerManagement() {
             setPlayers(prev => prev.map(p => p.id === updated.id ? { ...p, ...updated } : p));
             setEditingPlayer(null);
           }}
+        />
+      )}
+
+      {/* Merge / absorb ghost modal */}
+      {mergingPlayer && (
+        <AbsorbGhostModal
+          player={mergingPlayer}
+          onClose={() => setMergingPlayer(null)}
+          onMerged={handleMerged}
         />
       )}
     </div>

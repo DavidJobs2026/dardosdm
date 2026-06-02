@@ -528,6 +528,66 @@ export const deleteUser = async (req: AuthRequest, res: Response, next: NextFunc
   } catch (err) { next(err); }
 };
 
+/** GET /users/:id/ghost-preview — returns the ghost account data before merging */
+export const ghostPreview = async (req: AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    if (req.user!.role === "player") return next(forbidden());
+
+    const realUser = await prisma.user.findUnique({
+      where: { id: req.params.id },
+      select: { id: true, name: true, email: true, dni: true, elo: true, createdAt: true },
+    });
+    if (!realUser) return next(notFound("Usuario"));
+    if (!realUser.dni) return next(badRequest("El jugador no tiene DNI. Añádelo primero."));
+
+    const slug  = realUser.dni.toLowerCase().replace(/[^a-z0-9]/g, "");
+    const ghost = await prisma.user.findUnique({
+      where: { email: `${slug}@torneo.local` },
+      select: {
+        id:        true,
+        name:      true,
+        email:     true,
+        elo:       true,
+        createdAt: true,
+        participants: {
+          select: {
+            id:            true,
+            finalPosition: true,
+            registeredAt:  true,
+            tournament: { select: { id: true, name: true, status: true, startDate: true } },
+          },
+          orderBy: { registeredAt: "desc" },
+        },
+      },
+    });
+
+    if (!ghost) {
+      return res.json({ data: { ghost: null } });
+    }
+
+    // Detect conflicts: tournaments where the real user is already registered
+    const realPartTournIds = new Set(
+      (await prisma.participant.findMany({
+        where:  { userId: realUser.id },
+        select: { tournamentId: true },
+      })).map((p: { tournamentId: string }) => p.tournamentId)
+    );
+
+    const ghostParticipants = ghost.participants.map((gp: typeof ghost.participants[number]) => ({
+      ...gp,
+      conflict: realPartTournIds.has(gp.tournament.id),
+    }));
+
+    return res.json({
+      data: {
+        ghost: { ...ghost, participants: ghostParticipants },
+        transferCount:  ghostParticipants.filter(gp => !gp.conflict).length,
+        conflictCount:  ghostParticipants.filter(gp =>  gp.conflict).length,
+      },
+    });
+  } catch (err) { next(err); }
+};
+
 /** POST /users/:id/absorb-ghost — merge a @torneo.local ghost into a real user account */
 // Finds the ghost account with the same DNI as the real user and reassigns all
 // participant records from ghost → real. Then deletes the ghost.
