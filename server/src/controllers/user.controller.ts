@@ -129,7 +129,7 @@ export const batchCreateUsers = async (req: AuthRequest, res: Response, next: Ne
           const hash = await bcrypt.hash(pw, 12);
           existing = await prisma.user.create({
             data: {
-              name: p.name,
+              name: p.name.trim().toUpperCase(),
               email: p.email,
               passwordHash: hash,
               role: "player",
@@ -276,7 +276,7 @@ export const findOrCreatePlayer = async (req: AuthRequest, res: Response, next: 
       // are internal-only and should not be loginable via the public auth endpoint.
       const passwordHash = await bcrypt.hash(crypto.randomBytes(32).toString("hex"), 12);
       user = await prisma.user.create({
-        data:   { name: name.trim(), email, passwordHash },
+        data:   { name: name.trim().toUpperCase(), email, passwordHash },
         select: { id: true, name: true },
       });
     }

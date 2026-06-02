@@ -107,8 +107,9 @@ export const checkEmail = async (req: Request, res: Response, next: NextFunction
 export const register = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const body = registerSchema.parse(req.body);
-    const { password, name, role } = body;
+    const { password, role } = body;
     const email = body.email.toLowerCase().trim();
+    const name  = body.name.trim().toUpperCase();
     const dni   = body.dni?.trim().toUpperCase() || null;
 
     const existing = await prisma.user.findUnique({ where: { email } });

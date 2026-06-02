@@ -124,7 +124,7 @@ export default function RegistroPage() {
       const { data } = await api.get(`/auth/check-dni?dni=${encodeURIComponent(trimmed)}`);
       setDniResult(data.data);
       if (data.data.found && data.data.name) {
-        setName(data.data.name);
+        setName(data.data.name.toUpperCase());
       }
       if (data.data.found && data.data.provincia) {
         const matched = PROVINCES.find(p => p.toLowerCase() === data.data.provincia?.toLowerCase());
@@ -386,9 +386,10 @@ export default function RegistroPage() {
                 <label className="block text-xs font-semibold text-ink-400 mb-1.5 uppercase tracking-wider">Nombre completo</label>
                 <input
                   value={name}
-                  onChange={e => setName(e.target.value)}
+                  onChange={e => setName(e.target.value.toUpperCase())}
                   className={inputCls}
-                  placeholder="Juan García López"
+                  placeholder="JUAN GARCÍA LÓPEZ"
+                  style={{ textTransform: "uppercase" }}
                 />
               </div>
 

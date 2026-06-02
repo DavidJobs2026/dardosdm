@@ -247,7 +247,7 @@ function CreateOrganizerModal({ onClose, onCreated }: { onClose: () => void; onC
               <RoleSelector />
               <div>
                 <label className="label">Nombre</label>
-                <input value={name} onChange={e => setName(e.target.value)} className="input" placeholder="Nombre completo" />
+                <input value={name} onChange={e => setName(e.target.value.toUpperCase())} className="input" placeholder="NOMBRE COMPLETO" style={{ textTransform: "uppercase" }} />
               </div>
               <div>
                 <label className="label">Email</label>
@@ -447,10 +447,11 @@ function UserManagement() {
                   <input
                     autoFocus
                     value={draftName}
-                    onChange={e => setDraftName(e.target.value)}
+                    onChange={e => setDraftName(e.target.value.toUpperCase())}
                     onKeyDown={e => e.key === "Escape" && setEditingName(null)}
                     className="input py-1 text-sm h-7 flex-1 min-w-0"
-                    placeholder="Nombre"
+                    placeholder="NOMBRE"
+                    style={{ textTransform: "uppercase" }}
                   />
                   <button type="submit"
                     className="px-2.5 py-1 rounded-lg bg-red-600 hover:bg-red-500 text-white text-xs font-bold transition-colors shrink-0">
@@ -707,7 +708,7 @@ function EditPlayerModal({ player, onClose, onSaved }: {
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="label">Nombre completo</label>
-              <input value={name} onChange={e => setName(e.target.value)} className="input" placeholder="Nombre" />
+              <input value={name} onChange={e => setName(e.target.value.toUpperCase())} className="input" placeholder="NOMBRE" style={{ textTransform: "uppercase" }} />
             </div>
             <div>
               <label className="label">Email</label>
