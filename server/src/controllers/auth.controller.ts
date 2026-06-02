@@ -107,10 +107,18 @@ export const checkEmail = async (req: Request, res: Response, next: NextFunction
 export const register = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const body = registerSchema.parse(req.body);
-    const { email, password, name, role } = body;
+    const { password, name, role } = body;
+    const email = body.email.toLowerCase().trim();
+    const dni   = body.dni?.trim().toUpperCase() || null;
 
     const existing = await prisma.user.findUnique({ where: { email } });
     if (existing) return next(badRequest("Email ya en uso"));
+
+    // Check DNI uniqueness — even if previous account is unverified
+    if (dni) {
+      const dniUsed = await prisma.user.findUnique({ where: { dni } });
+      if (dniUsed) return next(badRequest("El DNI/NIE ya está registrado. Si no recibiste el email de verificación, usa el enlace de reenvío en la pantalla de login."));
+    }
 
     const passwordHash = await bcrypt.hash(password, 12);
 
@@ -122,7 +130,7 @@ export const register = async (req: Request, res: Response, next: NextFunction) 
     const user = await prisma.user.create({
       data: {
         email, name, passwordHash, role,
-        dni:            body.dni || null,
+        dni,
         phone:          body.phone || null,
         province:       body.province || null,
         birthDate:      body.birthDate ? new Date(body.birthDate) : null,
@@ -220,7 +228,8 @@ export const verifyEmail = async (req: Request, res: Response, next: NextFunctio
 // ─── Request verification email (public — email in body, no token needed) ────
 export const requestVerification = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { email } = z.object({ email: z.string().email() }).parse(req.body);
+    const raw   = z.object({ email: z.string().email() }).parse(req.body);
+    const email = raw.email.toLowerCase().trim();
 
     const user = await prisma.user.findUnique({ where: { email } });
     // Always return 200 to avoid leaking whether the email exists
@@ -273,7 +282,9 @@ export const resendVerification = async (req: Request, res: Response, next: Next
 
 export const login = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { email, password } = loginSchema.parse(req.body);
+    const raw = loginSchema.parse(req.body);
+    const email    = raw.email.toLowerCase().trim();
+    const password = raw.password;
 
     const user = await prisma.user.findUnique({ where: { email } });
     if (!user) return next(unauthorized("Invalid credentials"));
@@ -422,7 +433,8 @@ export const me = async (req: AuthRequest, res: Response, next: NextFunction) =>
 // ─── Forgot password — send reset email ──────────────────────────────────────
 export const forgotPassword = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { email } = z.object({ email: z.string().email() }).parse(req.body);
+    const raw   = z.object({ email: z.string().email() }).parse(req.body);
+    const email = raw.email.toLowerCase().trim();
 
     // Always return 200 — never reveal whether the email exists
     const user = await prisma.user.findUnique({ where: { email } });
