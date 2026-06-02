@@ -2,7 +2,7 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { User } from "@tournament/types";
 import { api } from "@/lib/api";
-import { setAccessToken } from "@/lib/token";
+import { getAccessToken, setAccessToken } from "@/lib/token";
 
 interface PlayerExtra {
   dni?: string;
@@ -106,7 +106,20 @@ export const useAuthStore = create<AuthState>()(
         // Called once on app mount. If we have a user in persisted state but no
         // in-memory token (e.g. after a page refresh), silently call /refresh.
         // The httpOnly cookie is sent automatically — no token needed in the request.
+
+        // If a valid in-memory token already exists (same tab re-rendering),
+        // skip the refresh and just re-fetch user data.
+        const existing = getAccessToken();
+        if (existing) {
+          try {
+            const me = await api.get("/auth/me");
+            set({ user: me.data.data });
+            return;
+          } catch { /* token expired — fall through to refresh */ }
+        }
+
         try {
+          // refreshAccessToken deduplicates concurrent calls (multi-tab race protection)
           const { data } = await api.post("/auth/refresh", {});
           const { accessToken } = data.data.tokens;
           setAccessToken(accessToken);

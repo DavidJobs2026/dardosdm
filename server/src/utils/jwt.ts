@@ -9,8 +9,8 @@ const REFRESH_SECRET = process.env.JWT_REFRESH_SECRET;
 if (!ACCESS_SECRET)  throw new Error("FATAL: JWT_ACCESS_SECRET environment variable is not set");
 if (!REFRESH_SECRET) throw new Error("FATAL: JWT_REFRESH_SECRET environment variable is not set");
 
-const ACCESS_EXPIRES  = "15m";
-const REFRESH_EXPIRES = "7d";
+const ACCESS_EXPIRES  = "4h";   // extended from 15m — reduces refresh frequency
+const REFRESH_EXPIRES = "30d";  // extended from 7d  — survives occasional long absences
 
 export interface JwtPayload {
   userId: string;

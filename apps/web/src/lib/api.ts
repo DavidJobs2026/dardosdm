@@ -17,6 +17,29 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
+// ── Shared refresh promise ──────────────────────────────────────────────────
+// All concurrent 401s share the same refresh call instead of each trying to
+// rotate the token independently (which would cause the second one to fail
+// with "token not found" and incorrectly log the user out).
+let _refreshPromise: Promise<string> | null = null;
+
+function refreshAccessToken(): Promise<string> {
+  if (_refreshPromise) return _refreshPromise;
+
+  _refreshPromise = axios
+    .post(`${API_URL}/auth/refresh`, {}, { withCredentials: true })
+    .then(({ data }) => {
+      const token = data.data.tokens.accessToken as string;
+      setAccessToken(token);
+      return token;
+    })
+    .finally(() => {
+      _refreshPromise = null;
+    });
+
+  return _refreshPromise;
+}
+
 // Auto-refresh on 401 — the refreshToken travels in an httpOnly cookie automatically
 api.interceptors.response.use(
   (res) => res,
@@ -30,14 +53,7 @@ api.interceptors.response.use(
     if (error.response?.status === 401 && !original._retry && !isRefreshRequest) {
       original._retry = true;
       try {
-        // No need to send the refresh token manually — it arrives via cookie
-        const { data } = await axios.post(
-          `${API_URL}/auth/refresh`,
-          {},
-          { withCredentials: true }
-        );
-        const { accessToken } = data.data.tokens;
-        setAccessToken(accessToken);                          // store only in memory
+        const accessToken = await refreshAccessToken();
         original.headers.Authorization = `Bearer ${accessToken}`;
         return api(original);
       } catch {

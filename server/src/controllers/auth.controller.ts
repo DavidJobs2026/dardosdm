@@ -21,7 +21,7 @@ function extractUserAgent(req: Request): string | null {
 
 // ─── Cookie helpers ───────────────────────────────────────────────────────────
 const COOKIE_NAME = "refreshToken";
-const COOKIE_MAX_AGE = 7 * 24 * 60 * 60 * 1000; // 7 days in ms
+const COOKIE_MAX_AGE = 30 * 24 * 60 * 60 * 1000; // 30 days in ms (matches REFRESH_EXPIRES)
 
 const IS_PROD = process.env.NODE_ENV === "production";
 
