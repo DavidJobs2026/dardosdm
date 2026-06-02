@@ -1547,14 +1547,33 @@ export default function TournamentDetailPage({ params }: { params: Promise<{ id:
 
   // ── Approve modal state ─────────────────────────────────────────────────────
   const [approvingInsc, setApprovingInsc] = useState<any | null>(null);
-  const [approveMetric, setApproveMetric] = useState("");
-  const [approving, setApproving] = useState(false);
+  const [approveMetric, setApproveMetric] = useState("");  // used for ppd/mpr single-field
+  const [approvePpd,    setApprovePpd]    = useState("");  // used when metric = combined
+  const [approveMpr,    setApproveMpr]    = useState("");  // used when metric = combined
+  const [approving,     setApproving]     = useState(false);
+
+  // Combined value derived from PPD + MPR (formula: mpr*10 + ppd)
+  const approveComputed = (() => {
+    const ppd = parseFloat(approvePpd);
+    const mpr = parseFloat(approveMpr);
+    if (isNaN(ppd) && isNaN(mpr)) return null;
+    return ((isNaN(mpr) ? 0 : mpr) * 10) + (isNaN(ppd) ? 0 : ppd);
+  })();
 
   const openApproveModal = (insc: any) => {
-    const suggested = insc.historicMetric?.value != null
-      ? String(insc.historicMetric.value.toFixed(2))
-      : insc.metricValue != null ? String(insc.metricValue) : "";
-    setApproveMetric(suggested);
+    const metric = tournament?.metric;
+    if (metric === "combined") {
+      // Pre-fill from historic PPD/MPR if available
+      setApprovePpd(insc.historicMetric?.ppd != null ? String(insc.historicMetric.ppd.toFixed(2)) : "");
+      setApproveMpr(insc.historicMetric?.mpr != null ? String(insc.historicMetric.mpr.toFixed(2)) : "");
+      setApproveMetric("");
+    } else {
+      const suggested = insc.historicMetric?.value != null
+        ? String(insc.historicMetric.value.toFixed(2))
+        : insc.metricValue != null ? String(insc.metricValue) : "";
+      setApproveMetric(suggested);
+      setApprovePpd(""); setApproveMpr("");
+    }
     setApprovingInsc(insc);
   };
 
@@ -1576,7 +1595,12 @@ export default function TournamentDetailPage({ params }: { params: Promise<{ id:
   const handleConfirmApprove = async () => {
     if (!approvingInsc) return;
     setApproving(true);
-    const mv = approveMetric.trim() ? parseFloat(approveMetric.trim()) : null;
+    let mv: number | null;
+    if (tournament?.metric === "combined") {
+      mv = approveComputed;
+    } else {
+      mv = approveMetric.trim() ? parseFloat(approveMetric.trim()) : null;
+    }
     await handleResolveInscription(approvingInsc.id, "approve", mv);
     setApproving(false);
   };
@@ -2524,30 +2548,75 @@ export default function TournamentDetailPage({ params }: { params: Promise<{ id:
                 </div>
               </div>
 
-              {/* Metric input */}
-              <div>
-                <label className="block text-xs font-semibold text-ink-400 mb-1.5 uppercase tracking-wider">
-                  Media del jugador
-                  {approvingInsc.historicMetric?.value != null && (
-                    <span className="ml-2 text-amber-400 normal-case font-normal">
-                      Historial: {approvingInsc.historicMetric.metricKey?.toUpperCase()} {approvingInsc.historicMetric.value.toFixed(2)}
-                      {approvingInsc.historicMetric.level ? ` · ${approvingInsc.historicMetric.level}` : ""}
+              {/* Metric input — layout depends on tournament metric type */}
+              {tournament?.metric === "combined" ? (
+                <div className="space-y-3">
+                  <label className="block text-xs font-semibold text-ink-400 uppercase tracking-wider">
+                    Media del jugador
+                    {approvingInsc.historicMetric?.value != null && (
+                      <span className="ml-2 text-amber-400 normal-case font-normal">
+                        Historial: COMB {approvingInsc.historicMetric.value.toFixed(2)}
+                        {approvingInsc.historicMetric.level ? ` · ${approvingInsc.historicMetric.level}` : ""}
+                      </span>
+                    )}
+                  </label>
+                  {/* PPD + MPR side by side */}
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="block text-[10px] text-ink-500 mb-1 uppercase tracking-wide font-semibold">PPD</label>
+                      <input
+                        type="number" step="0.01" min="0"
+                        value={approvePpd}
+                        onChange={e => setApprovePpd(e.target.value)}
+                        className="w-full px-3 py-2.5 bg-ink-950 border border-ink-700 rounded-xl text-white placeholder-ink-500 focus:outline-none focus:border-red-500/60 focus:ring-1 focus:ring-red-500/20 transition-all text-sm"
+                        placeholder="0.00"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] text-ink-500 mb-1 uppercase tracking-wide font-semibold">MPR</label>
+                      <input
+                        type="number" step="0.01" min="0"
+                        value={approveMpr}
+                        onChange={e => setApproveMpr(e.target.value)}
+                        className="w-full px-3 py-2.5 bg-ink-950 border border-ink-700 rounded-xl text-white placeholder-ink-500 focus:outline-none focus:border-red-500/60 focus:ring-1 focus:ring-red-500/20 transition-all text-sm"
+                        placeholder="0.00"
+                      />
+                    </div>
+                  </div>
+                  {/* Auto-computed combined */}
+                  <div className="flex items-center justify-between px-3.5 py-2.5 bg-ink-950 border border-ink-700 rounded-xl">
+                    <span className="text-xs font-semibold text-ink-400 uppercase tracking-wider">Combinada</span>
+                    <span className={approveComputed != null ? "text-amber-400 font-bold text-sm tabular-nums" : "text-ink-600 text-xs italic"}>
+                      {approveComputed != null ? approveComputed.toFixed(2) : "—"}
                     </span>
+                  </div>
+                  {approveComputed == null && (
+                    <p className="text-ink-600 text-xs">Rellena PPD y/o MPR para calcular la combinada</p>
                   )}
-                </label>
-                <input
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  value={approveMetric}
-                  onChange={e => setApproveMetric(e.target.value)}
-                  className="w-full px-3.5 py-2.5 bg-ink-950 border border-ink-700 rounded-xl text-white placeholder-ink-500 focus:outline-none focus:border-red-500/60 focus:ring-1 focus:ring-red-500/20 transition-all text-sm"
-                  placeholder="Ej: 25.40 (opcional)"
-                />
-                {!approveMetric && (
-                  <p className="text-ink-600 text-xs mt-1">Déjalo vacío si no tiene media asignada</p>
-                )}
-              </div>
+                </div>
+              ) : (
+                <div>
+                  <label className="block text-xs font-semibold text-ink-400 mb-1.5 uppercase tracking-wider">
+                    Media del jugador
+                    {approvingInsc.historicMetric?.value != null && (
+                      <span className="ml-2 text-amber-400 normal-case font-normal">
+                        Historial: {approvingInsc.historicMetric.metricKey?.toUpperCase()} {approvingInsc.historicMetric.value.toFixed(2)}
+                        {approvingInsc.historicMetric.level ? ` · ${approvingInsc.historicMetric.level}` : ""}
+                      </span>
+                    )}
+                  </label>
+                  <input
+                    type="number" step="0.01" min="0"
+                    value={approveMetric}
+                    onChange={e => setApproveMetric(e.target.value)}
+                    className="w-full px-3.5 py-2.5 bg-ink-950 border border-ink-700 rounded-xl text-white placeholder-ink-500 focus:outline-none focus:border-red-500/60 focus:ring-1 focus:ring-red-500/20 transition-all text-sm"
+                    placeholder="Ej: 25.40 (opcional)"
+                  />
+                  {!approveMetric && (
+                    <p className="text-ink-600 text-xs mt-1">Déjalo vacío si no tiene media asignada</p>
+                  )}
+                </div>
+              )}
 
               <div className="flex gap-2 pt-1">
                 <button onClick={() => setApprovingInsc(null)}
