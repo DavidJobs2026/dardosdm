@@ -1,7 +1,9 @@
 "use client";
 
-import { Plus, Trash2, ChevronLeft, ChevronRight } from "lucide-react";
+import { Plus, Trash2, ChevronLeft, ChevronRight, ChevronDown } from "lucide-react";
 import { clsx } from "clsx";
+import { useEffect, useState } from "react";
+import { api } from "@/lib/api";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -143,6 +145,62 @@ export function BestOfSelector({
       <p className="text-xs text-ink-600">
         Mejor de {value} — gana quien llegue primero a{" "}
         <strong className="text-ink-400">{Math.ceil(value / 2)} {Math.ceil(value / 2) === 1 ? "leg" : "legs"}</strong>
+      </p>
+    </div>
+  );
+}
+
+// ─── SeasonSelector ───────────────────────────────────────────────────────────
+
+/**
+ * Dropdown that lets the organizer pick which historico season to use for
+ * player metric lookups. Falls back to most recent when left blank.
+ * Fetches available seasons from GET /player-records/seasons.
+ */
+export function SeasonSelector({
+  value,
+  onChange,
+  disabled = false,
+}: {
+  value:    string | null | undefined;
+  onChange: (v: string | null) => void;
+  disabled?: boolean;
+}) {
+  const [seasons, setSeasons] = useState<string[]>([]);
+
+  useEffect(() => {
+    api.get("/player-records/seasons")
+      .then(({ data }) => setSeasons(data.data as string[]))
+      .catch(() => {});
+  }, []);
+
+  if (seasons.length === 0) return null;
+
+  return (
+    <div className="space-y-2">
+      <p className="text-xs font-semibold text-ink-400 uppercase tracking-wide">
+        Liga preferida para la media
+      </p>
+      <div className="relative">
+        <select
+          disabled={disabled}
+          value={value ?? ""}
+          onChange={e => onChange(e.target.value || null)}
+          className={clsx(
+            "w-full appearance-none px-3.5 py-2.5 pr-9 bg-ink-950 border border-ink-700 rounded-xl",
+            "text-white text-sm focus:outline-none focus:border-red-500/60 focus:ring-1 focus:ring-red-500/20 transition-all",
+            disabled && "opacity-40 cursor-not-allowed"
+          )}
+        >
+          <option value="">Automática (más reciente)</option>
+          {seasons.map(s => (
+            <option key={s} value={s}>{s}</option>
+          ))}
+        </select>
+        <ChevronDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-ink-500" />
+      </div>
+      <p className="text-[11px] text-ink-500">
+        Si un jugador no tiene datos en la liga elegida, se usará la temporada más reciente disponible.
       </p>
     </div>
   );

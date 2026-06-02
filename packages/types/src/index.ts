@@ -119,6 +119,7 @@ export interface Tournament {
   estimatedMatchMinutes:  number;         // alert threshold in GestionTab (default 15)
   rrGroupSize?:       number | null;      // 3–8; null for non-RR
   rrAdvancingTeams?:  number | null;      // 2–4; null for non-RR
+  preferredSeason?:   string | null;      // e.g. "LIGA 25-26"; null = use most recent
   teamSize?:          number | null;      // for equipos: max players per team (3–7)
   teamSizeMin?:       number | null;      // for equipos: minimum required players per team (≤ teamSize)
   metricPlayers?:     number | null;      // for equipos: how many top players count for the metric (≤ teamSize)

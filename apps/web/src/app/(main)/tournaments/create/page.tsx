@@ -11,7 +11,7 @@ import { ArrowLeft, ChevronDown, ChevronUp, ImagePlus, Trash2 } from "lucide-rea
 import Link from "next/link";
 import { clsx } from "clsx";
 import {
-  SizeSelector, LevelBuilder, LevelData,
+  SizeSelector, LevelBuilder, LevelData, SeasonSelector,
   FORMAT_OPTIONS, GAME_OPTIONS, METRIC_OPTIONS,
 } from "@/components/tournament/TournamentFormShared";
 import { DateTimePicker } from "@/components/ui/DateTimePicker";
@@ -39,6 +39,7 @@ type FormData = z.infer<typeof schema>;
 export default function CreateTournamentPage() {
   const router = useRouter();
   const [levels,           setLevels]           = useState<LevelData[]>([]);
+  const [preferredSeason,  setPreferredSeason]  = useState<string | null>(null);
   const [showAdvanced,     setShowAdvanced]     = useState(false);
   const [rrGroupSize,      setRrGroupSize]      = useState(4);
   const [rrAdvancingTeams, setRrAdvancingTeams] = useState(2);
@@ -77,6 +78,7 @@ export default function CreateTournamentPage() {
         ...(data.format === "round_robin" ? { rrGroupSize, rrAdvancingTeams } : {}),
         ...(data.participantType === "equipos" ? { teamSize: teamSizeMax, teamSizeMin, metricPlayers } : {}),
         ...(maxMetric ? { maxMetric: parseFloat(maxMetric) } : {}),
+        preferredSeason: preferredSeason || null,
       };
       const { data: res } = await api.post("/tournaments", payload);
       const tournamentId = res.data.id;
@@ -365,13 +367,19 @@ export default function CreateTournamentPage() {
           )}
         </div>
 
-        {/* ── Niveles / cuadrantes ──────────────────────────────────────── */}
+        {/* ── Liga preferida + Niveles ──────────────────────────────────── */}
         {selectedMetric && (
           <div className="card space-y-4">
             <div className="flex items-center justify-between">
               <h2 className="text-xs font-bold text-ink-400 uppercase tracking-wider">Niveles de competición</h2>
               <span className="text-xs text-ink-500">opcional</span>
             </div>
+
+            <SeasonSelector
+              value={preferredSeason}
+              onChange={setPreferredSeason}
+            />
+
             <LevelBuilder
               levels={levels}
               onChange={setLevels}

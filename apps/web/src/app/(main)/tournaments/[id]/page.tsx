@@ -20,7 +20,7 @@ import {
   RotateCcw, RefreshCw, X, Target, Pencil, Loader2,
 } from "lucide-react";
 import {
-  SizeSelector, BestOfSelector, LevelBuilder, LevelData,
+  SizeSelector, BestOfSelector, LevelBuilder, LevelData, SeasonSelector,
   FORMAT_OPTIONS, GAME_OPTIONS, METRIC_OPTIONS, toDatetimeLocal,
 } from "@/components/tournament/TournamentFormShared";
 import { DateTimePicker } from "@/components/ui/DateTimePicker";
@@ -617,6 +617,7 @@ function TournamentSetup({
   const [teamSizeMax,           setTeamSizeMax]           = useState<number>(tournament.teamSize ?? 7);
   const [metricPlayers,         setMetricPlayers]         = useState<number>(tournament.metricPlayers ?? tournament.teamSize ?? 4);
   const [maxMetric,             setMaxMetric]             = useState<string>(tournament.maxMetric != null ? String(tournament.maxMetric) : "");
+  const [preferredSeason,       setPreferredSeason]       = useState<string | null>((tournament as any).preferredSeason ?? null);
   const [imageUrl,              setImageUrl]              = useState<string | null>(tournament.imageUrl ?? null);
   const [allowPlayerReg,        setAllowPlayerReg]        = useState<boolean>((tournament as any).allowPlayerReg ?? false);
   const [saving,         setSaving]         = useState(false);
@@ -651,6 +652,7 @@ function TournamentSetup({
         winnerOnly,
         estimatedMatchMinutes,
         allowPlayerReg,
+        preferredSeason: preferredSeason || null,
         ...(format === "round_robin" ? { rrGroupSize, rrAdvancingTeams } : {}),
         ...(participantType === "equipos" ? { teamSize: teamSizeMax, teamSizeMin, metricPlayers } : {}),
         maxMetric: maxMetric ? parseFloat(maxMetric) : null,
@@ -964,13 +966,18 @@ function TournamentSetup({
         </div>
       )}
 
-      {/* ── 4. Niveles ── */}
+      {/* ── 4. Liga preferida + Niveles ── */}
       {metric && (
         <div className="bg-ink-900 border border-ink-800 rounded-2xl p-5 space-y-4">
           <div className="flex items-center justify-between">
             <h3 className="font-bold text-white text-xs uppercase tracking-wider">Niveles de competición</h3>
             <span className="text-xs text-ink-500">opcional</span>
           </div>
+          <SeasonSelector
+            value={preferredSeason}
+            onChange={setPreferredSeason}
+            disabled={!canEdit}
+          />
           <LevelBuilder
             levels={levels}
             onChange={setLevels}

@@ -50,6 +50,7 @@ const createSchema = z.object({
   estimatedMatchMinutes:  z.number().int().min(5).max(240).optional(),
   rrGroupSize:            z.number().int().min(3).max(8).optional(),
   rrAdvancingTeams:       z.number().int().min(2).max(4).optional(),
+  preferredSeason:        z.preprocess(emptyToUndefined, z.string().nullable().optional()),
   allowPlayerReg:         z.boolean().optional(),
 });
 
@@ -149,7 +150,8 @@ export const createTournament = async (req: AuthRequest, res: Response, next: Ne
 async function reassignParticipantMetrics(
   tournamentId: string,
   metric: string,
-  levels: { name: string; minValue: number; maxValue: number | null; order: number }[]
+  levels: { name: string; minValue: number; maxValue: number | null; order: number }[],
+  preferredSeason?: string | null
 ) {
   const metricFilter = metric === "ppd"
     ? { ppd: { not: null } }
@@ -165,20 +167,39 @@ async function reassignParticipantMetrics(
   for (const p of participants) {
     let rec: { ppd: number | null; mpr: number | null; combined: number | null } | null = null;
 
-    // Prefer lookup by DNI, fall back to user display name
+    // Lookup by DNI (preferred season first, then most recent)
     if (p.dni) {
-      rec = await prisma.playerRecord.findFirst({
-        where: { dni: p.dni, ...metricFilter },
-        orderBy: { createdAt: "desc" },
-        select: { ppd: true, mpr: true, combined: true },
-      });
+      if (preferredSeason) {
+        rec = await prisma.playerRecord.findFirst({
+          where: { dni: p.dni, season: preferredSeason, ...metricFilter },
+          orderBy: { createdAt: "desc" },
+          select: { ppd: true, mpr: true, combined: true },
+        });
+      }
+      if (!rec) {
+        rec = await prisma.playerRecord.findFirst({
+          where: { dni: p.dni, ...metricFilter },
+          orderBy: { createdAt: "desc" },
+          select: { ppd: true, mpr: true, combined: true },
+        });
+      }
     }
+    // Fall back to name lookup if no DNI match
     if (!rec && p.user?.name) {
-      rec = await prisma.playerRecord.findFirst({
-        where: { name: { equals: p.user.name, mode: "insensitive" }, ...metricFilter },
-        orderBy: { createdAt: "desc" },
-        select: { ppd: true, mpr: true, combined: true },
-      });
+      if (preferredSeason) {
+        rec = await prisma.playerRecord.findFirst({
+          where: { name: { equals: p.user.name, mode: "insensitive" }, season: preferredSeason, ...metricFilter },
+          orderBy: { createdAt: "desc" },
+          select: { ppd: true, mpr: true, combined: true },
+        });
+      }
+      if (!rec) {
+        rec = await prisma.playerRecord.findFirst({
+          where: { name: { equals: p.user.name, mode: "insensitive" }, ...metricFilter },
+          orderBy: { createdAt: "desc" },
+          select: { ppd: true, mpr: true, combined: true },
+        });
+      }
     }
 
     if (rec) {
@@ -226,9 +247,9 @@ export const updateTournament = async (req: AuthRequest, res: Response, next: Ne
       },
     });
 
-    // Re-assign participant metricValues when metric changes
-    if (updated.metric && updated.metric !== prevMetric) {
-      await reassignParticipantMetrics(req.params.id, updated.metric, updated.levels);
+    // Re-assign participant metricValues when metric or preferred season changes
+    if (updated.metric && (updated.metric !== prevMetric || body.preferredSeason !== undefined)) {
+      await reassignParticipantMetrics(req.params.id, updated.metric, updated.levels, updated.preferredSeason ?? null);
     }
 
     audit({ req, action: "tournament.update", entityType: "tournament", entityId: updated.id, entityName: updated.name });
@@ -253,7 +274,7 @@ export const recalculateMetrics = async (req: AuthRequest, res: Response, next: 
       return next(badRequest("Este torneo no tiene una métrica configurada"));
     }
 
-    await reassignParticipantMetrics(req.params.id, tournament.metric, tournament.levels);
+    await reassignParticipantMetrics(req.params.id, tournament.metric, tournament.levels, tournament.preferredSeason ?? null);
 
     // Return updated participants count and a success flag
     return res.json({ data: { ok: true }, message: "Métricas recalculadas correctamente" });
@@ -1365,7 +1386,7 @@ export const getPendingInscriptions = async (req: AuthRequest, res: Response, ne
 
     const tournament = await prisma.tournament.findUnique({
       where: { id: req.params.id },
-      select: { metric: true, gameType: true, createdById: true },
+      select: { metric: true, gameType: true, createdById: true, preferredSeason: true },
     });
     if (!tournament) return next(notFound("Tournament"));
     // Only the tournament's organizer (or an admin) can view its pending inscriptions
@@ -1382,15 +1403,28 @@ export const getPendingInscriptions = async (req: AuthRequest, res: Response, ne
     });
 
     // Enrich each inscription with PlayerRecord metric data (lookup by DNI)
+    // If the tournament has a preferredSeason, try that first → fall back to most recent
+    const preferredSeason = tournament?.preferredSeason ?? null;
+
     const enriched = await Promise.all(inscriptions.map(async (insc) => {
       const dni = insc.user?.dni;
       if (!dni) return { ...insc, historicMetric: null };
 
-      const record = await prisma.playerRecord.findFirst({
-        where: { dni: { equals: dni, mode: "insensitive" } },
-        orderBy: { createdAt: "desc" },
-        select: { ppd: true, mpr: true, combined: true, gamesPlayed: true, level: true, season: true },
-      });
+      let record = null;
+      if (preferredSeason) {
+        record = await prisma.playerRecord.findFirst({
+          where: { dni: { equals: dni, mode: "insensitive" }, season: preferredSeason },
+          orderBy: { createdAt: "desc" },
+          select: { ppd: true, mpr: true, combined: true, gamesPlayed: true, level: true, season: true },
+        });
+      }
+      if (!record) {
+        record = await prisma.playerRecord.findFirst({
+          where: { dni: { equals: dni, mode: "insensitive" } },
+          orderBy: { createdAt: "desc" },
+          select: { ppd: true, mpr: true, combined: true, gamesPlayed: true, level: true, season: true },
+        });
+      }
 
       const metricField = tournament?.metric === "mpr" ? "mpr"
         : tournament?.metric === "combined" ? "combined"

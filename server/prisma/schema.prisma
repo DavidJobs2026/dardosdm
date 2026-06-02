@@ -157,6 +157,7 @@ model Tournament {
   // ── Round Robin config ──────────────────────────────────────────────────────
   rrGroupSize      Int?             @map("rr_group_size")      // 3–8; null for non-RR
   rrAdvancingTeams Int?             @map("rr_advancing_teams") // 2–4; null for non-RR
+  preferredSeason  String?          @map("preferred_season")   // e.g. "LIGA 25-26"; null = most recent
   // ────────────────────────────────────────────────────────────────────────────
   imageUrl        String?          @map("image_url")           // tournament cover photo path
   allowPlayerReg  Boolean          @default(false) @map("allow_player_reg")
