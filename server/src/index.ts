@@ -60,16 +60,6 @@ const emailSendLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
 });
-// Generous limiter for token refresh — called automatically by the frontend on
-// every page load, so it needs a much higher ceiling than the brute-force limiter.
-// 200/15 min ≈ 13/min, comfortable for multiple open tabs.
-const refreshLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 200,
-  message: "Demasiadas peticiones de refresco",
-  standardHeaders: true,
-  legacyHeaders: false,
-});
 // Generous limiter for all other API calls (organizer can inscribe many players)
 const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -87,7 +77,6 @@ app.use("/uploads", (_req, res, next) => {
 }, express.static(process.env.UPLOADS_PATH || path.join(__dirname, "../../uploads")));
 
 // ─── Routes ───────────────────────────────────────────────────────────────────
-app.use("/api/v1/auth/refresh",               refreshLimiter);     // 200/15min — auto-called on every page load
 app.use("/api/v1/auth/check-email",           enumerationLimiter); // 20/15min — prevents bulk enumeration
 app.use("/api/v1/auth/check-phone",           enumerationLimiter);
 app.use("/api/v1/auth/check-dni",             enumerationLimiter); // 20/15min — prevents DNI enumeration
