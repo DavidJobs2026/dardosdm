@@ -93,6 +93,7 @@ model RefreshToken {
   token     String   @unique
   userId    String   @map("user_id")
   expiresAt DateTime @map("expires_at")
+  userAgent String?  @map("user_agent")   // bound at issue time; mismatch on refresh = stolen token
   createdAt DateTime @default(now()) @map("created_at")
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)

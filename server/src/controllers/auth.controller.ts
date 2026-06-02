@@ -8,6 +8,17 @@ import { badRequest, unauthorized, notFound } from "../utils/errors";
 import { AuthRequest } from "../middlewares/auth.middleware";
 import { sendWelcomeVerification } from "../lib/email";
 
+// ─── Request fingerprint helpers ─────────────────────────────────────────────
+// We bind each refresh token to the User-Agent so a stolen cookie can't be
+// replayed from a different browser/device.  IP is intentionally excluded
+// because it changes legitimately (mobile networks, VPN, CGNAT).
+function extractUserAgent(req: Request): string | null {
+  const ua = req.headers["user-agent"];
+  if (!ua) return null;
+  // Truncate to 512 chars — protects against absurdly long UA strings
+  return ua.slice(0, 512);
+}
+
 // ─── Cookie helpers ───────────────────────────────────────────────────────────
 const COOKIE_NAME = "refreshToken";
 const COOKIE_MAX_AGE = 7 * 24 * 60 * 60 * 1000; // 7 days in ms
@@ -152,7 +163,9 @@ export const register = async (req: Request, res: Response, next: NextFunction) 
     const refreshToken = signRefreshToken(payload);
 
     const expiresAt = new Date(Date.now() + COOKIE_MAX_AGE);
-    await prisma.refreshToken.create({ data: { token: refreshToken, userId: user.id, expiresAt } });
+    await prisma.refreshToken.create({
+      data: { token: refreshToken, userId: user.id, expiresAt, userAgent: extractUserAgent(req) },
+    });
 
     setRefreshCookie(res, refreshToken);
 
@@ -274,7 +287,9 @@ export const login = async (req: Request, res: Response, next: NextFunction) => 
     const refreshToken = signRefreshToken(payload);
 
     const expiresAt = new Date(Date.now() + COOKIE_MAX_AGE);
-    await prisma.refreshToken.create({ data: { token: refreshToken, userId: user.id, expiresAt } });
+    await prisma.refreshToken.create({
+      data: { token: refreshToken, userId: user.id, expiresAt, userAgent: extractUserAgent(req) },
+    });
 
     setRefreshCookie(res, refreshToken);
 
@@ -313,6 +328,19 @@ export const refresh = async (req: Request, res: Response, next: NextFunction) =
       return next(unauthorized("Invalid or expired refresh token"));
     }
 
+    // ── User-Agent binding check ──────────────────────────────────────────────
+    // If the token was issued with a UA and the current request comes from a
+    // different UA, treat it as a stolen token: reject + clear cookie.
+    // Tokens issued before this feature (userAgent = null) are let through once
+    // so existing sessions aren't broken on deploy; the replacement token will
+    // carry the UA going forward.
+    const currentUA = extractUserAgent(req);
+    if (stored.userAgent !== null && stored.userAgent !== currentUA) {
+      clearRefreshCookie(res);
+      console.warn(`[auth] refresh token UA mismatch — possible token theft. userId=${stored.userId} stored="${stored.userAgent?.slice(0, 80)}" current="${currentUA?.slice(0, 80)}"`);
+      return next(unauthorized("Session invalid — please log in again"));
+    }
+
     const payload = verifyRefreshToken(refreshToken);
     const user = await prisma.user.findUnique({ where: { id: payload.userId } });
     if (!user) return next(notFound("User"));
@@ -328,7 +356,9 @@ export const refresh = async (req: Request, res: Response, next: NextFunction) =
     const newRefreshToken = signRefreshToken(newPayload);
 
     const expiresAt = new Date(Date.now() + COOKIE_MAX_AGE);
-    await prisma.refreshToken.create({ data: { token: newRefreshToken, userId: user.id, expiresAt } });
+    await prisma.refreshToken.create({
+      data: { token: newRefreshToken, userId: user.id, expiresAt, userAgent: currentUA },
+    });
 
     setRefreshCookie(res, newRefreshToken);
 
