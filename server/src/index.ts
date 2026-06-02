@@ -35,17 +35,14 @@ app.use(morgan("dev", {
 app.use(cookieParser());
 app.use(express.json({ limit: "2mb" }));
 app.use(express.urlencoded({ extended: true, limit: "2mb" }));
-// Strict limiter for auth endpoints (brute-force protection on login/register).
-// Explicitly skips /refresh — that endpoint has its own generous limiter above.
-// Uses req.originalUrl (full URL, never stripped by Express prefix mounting) so
-// the check is reliable regardless of where this middleware is applied.
+// Strict limiter for login/register only (brute-force protection).
+// Mounted explicitly on /auth/login and /auth/register — does NOT apply to /refresh.
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 min
   max: 30,
   message: "Demasiados intentos, espera un momento",
   standardHeaders: true,
   legacyHeaders: false,
-  skip: (req) => req.originalUrl.includes("/auth/refresh"),
 });
 // Tight limiter for check-email / check-phone — prevents bulk user enumeration
 const enumerationLimiter = rateLimit({
@@ -96,7 +93,8 @@ app.use("/api/v1/auth/check-phone",           enumerationLimiter);
 app.use("/api/v1/auth/check-dni",             enumerationLimiter); // 20/15min — prevents DNI enumeration
 app.use("/api/v1/auth/request-verification",  emailSendLimiter);   // 3/15min — prevents email spam
 app.use("/api/v1/auth/resend-verification",   emailSendLimiter);   // 3/15min — same protection authenticated
-app.use("/api/v1/auth", authLimiter);                              // 30/15min — brute-force on login/register
+app.use("/api/v1/auth/login",                 authLimiter);        // 30/15min — brute-force on login
+app.use("/api/v1/auth/register",              authLimiter);        // 30/15min — brute-force on register
 app.use("/api/v1",      apiLimiter);
 app.use("/api/v1",      createRouter(io));
 
