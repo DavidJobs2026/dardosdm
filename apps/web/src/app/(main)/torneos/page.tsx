@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { api } from "@/lib/api";
 import { Tournament } from "@tournament/types";
 import { useAuthStore } from "@/store/auth.store";
@@ -79,7 +80,7 @@ function TournamentCard({
     : null;
 
   return (
-    <a
+    <Link
       href={`/tournaments/${tournament.id}`}
       className="block bg-ink-900 border border-ink-800 rounded-2xl overflow-hidden hover:border-ink-600 transition-all group"
     >
@@ -176,7 +177,7 @@ function TournamentCard({
           )}
         </div>
       </div>
-    </a>
+    </Link>
   );
 }
 
@@ -261,12 +262,12 @@ export default function TorneosPage() {
               Hemos enviado un enlace de verificación a <strong className="text-yellow-300">{user.email}</strong>. Confírmalo para activar todas las funciones.
             </p>
           </div>
-          <a
+          <Link
             href="/verificar-email/pendiente"
             className="shrink-0 px-3 py-1.5 rounded-lg bg-yellow-600/20 border border-yellow-600/40 text-yellow-300 text-xs font-semibold hover:bg-yellow-600/30 transition-colors"
           >
             Reenviar
-          </a>
+          </Link>
         </div>
       )}
 
