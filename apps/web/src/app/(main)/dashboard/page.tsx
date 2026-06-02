@@ -366,13 +366,19 @@ function UserManagement() {
     }
   };
 
-  const handleRoleChange = async (userId: string, role: "admin" | "organizer") => {
+  const handleRoleChange = async (userId: string, role: "admin" | "organizer" | "player") => {
     setSavingRole(userId);
     setEditingRole(null);
     try {
       await api.patch(`/users/${userId}/role`, { role });
-      setUsers(prev => sortUsers(prev.map(u => u.id === userId ? { ...u, role } : u)));
-      toast.success("Rol actualizado");
+      if (role === "player") {
+        // Demoted — remove from the organizer list; they still appear in the players panel
+        setUsers(prev => prev.filter(u => u.id !== userId));
+        toast.success("Rol eliminado — el jugador sigue en el panel de jugadores");
+      } else {
+        setUsers(prev => sortUsers(prev.map(u => u.id === userId ? { ...u, role } : u)));
+        toast.success("Rol actualizado");
+      }
     } catch {
       toast.error("Error al cambiar el rol");
     } finally {
@@ -537,18 +543,22 @@ function UserManagement() {
               </div>
             ) : isEditingRole ? (
               /* ── Inline role selector ── */
-              <div className="flex items-center gap-1.5 shrink-0">
-                {(["admin", "organizer"] as const).map(r => (
+              <div className="flex items-center gap-1.5 shrink-0 flex-wrap">
+                {(["admin", "organizer", "player"] as const).map(r => (
                   <button key={r} onClick={() => handleRoleChange(u.id, r)}
                     className={clsx(
                       "px-3 py-1.5 rounded-lg border text-xs font-semibold transition-all",
                       u.role === r
                         ? r === "admin"
                           ? "border-yellow-500 bg-yellow-900/25 text-yellow-300"
-                          : "border-red-500 bg-red-900/25 text-red-300"
-                        : "border-ink-700 text-ink-400 hover:border-ink-500 hover:text-white"
+                          : r === "organizer"
+                            ? "border-red-500 bg-red-900/25 text-red-300"
+                            : "border-ink-600 bg-ink-800 text-ink-300"
+                        : r === "player"
+                          ? "border-ink-700 text-ink-500 hover:border-ink-500 hover:text-ink-300"
+                          : "border-ink-700 text-ink-400 hover:border-ink-500 hover:text-white"
                     )}>
-                    {r === "admin" ? "Super Admin" : "Organizador"}
+                    {r === "admin" ? "Super Admin" : r === "organizer" ? "Organizador" : "Jugador"}
                   </button>
                 ))}
                 <button onClick={() => setEditingRole(null)}
