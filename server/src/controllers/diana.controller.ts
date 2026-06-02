@@ -381,7 +381,9 @@ function sendPushNotification(
     .map(p => p?.userId)
     .filter((id): id is string => !!id);
 
+  console.log(`[push/diana] call=${callNumber} diana=${dianaNum} userIds=${JSON.stringify(userIds)}`);
+
   for (const userId of userIds) {
-    sendPushToUser(userId, { title, body }).catch(() => {});
+    sendPushToUser(userId, { title, body }).catch((e) => console.error("[push/diana] unexpected error:", e));
   }
 }

@@ -19,9 +19,13 @@ export async function sendPushToUser(
   userId: string,
   payload: { title: string; body: string; url?: string }
 ): Promise<void> {
-  if (!publicKey || !privateKey) return;
+  if (!publicKey || !privateKey) {
+    console.warn("[push] VAPID keys not set — skipping push for userId:", userId);
+    return;
+  }
 
   const subs = await prisma.pushSubscription.findMany({ where: { userId } });
+  console.log(`[push] userId=${userId} → ${subs.length} subscriptions found`);
   if (!subs.length) return;
 
   const json = JSON.stringify(payload);
@@ -33,12 +37,14 @@ export async function sendPushToUser(
           { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
           json
         );
+        console.log(`[push] sent OK to ...${sub.endpoint.slice(-30)}`);
       } catch (err: any) {
         // 410 Gone = subscription expired/revoked — remove it from DB
         if (err?.statusCode === 410 || err?.statusCode === 404) {
+          console.warn(`[push] subscription expired (${err.statusCode}), removing: ...${sub.endpoint.slice(-30)}`);
           await prisma.pushSubscription.deleteMany({ where: { endpoint: sub.endpoint } }).catch(() => {});
         } else {
-          console.warn(`[push] failed to send to ${sub.endpoint.slice(-20)}:`, err?.message ?? err);
+          console.warn(`[push] failed to send to ...${sub.endpoint.slice(-30)}:`, err?.statusCode, err?.message ?? err);
         }
       }
     })
