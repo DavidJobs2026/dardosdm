@@ -308,13 +308,14 @@ export const getMyProfile = async (req: AuthRequest, res: Response, next: NextFu
   }
 };
 
-/** GET /users/players — list all players with full profile (admin + organizer) */
+/** GET /users/players — list all non-admin real users with full profile (admin + organizer) */
 export const listPlayers = async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     if (req.user!.role === "player") return next(forbidden());
     const players = await prisma.user.findMany({
       where: {
-        role: "player",
+        // Include players AND organizers — an organizer may still compete as a player
+        role: { in: ["player", "organizer"] },
         NOT: { email: { endsWith: "@torneo.local" } },
       },
       select: {
