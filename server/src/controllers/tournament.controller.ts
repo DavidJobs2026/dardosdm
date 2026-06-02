@@ -125,13 +125,15 @@ export const getTournament = async (req: AuthRequest, res: Response, next: NextF
 
 export const createTournament = async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
-    const { levels, ...body } = createSchema.parse(req.body);
+    const { levels, preferredSeason, ...body } = createSchema.parse(req.body);
 
     const tournament = await prisma.tournament.create({
       data: {
         ...body,
         startDate:  body.startDate ? new Date(body.startDate) : undefined,
         createdById: req.user!.userId,
+        // Only set preferredSeason when explicitly provided (null omitted so missing-column doesn't crash)
+        ...(preferredSeason != null ? { preferredSeason } : {}),
         // Create levels inline if provided
         levels: levels?.length
           ? { create: levels.map(l => ({ name: l.name, minValue: l.minValue, maxValue: l.maxValue ?? null, maxParticipants: l.maxParticipants ?? null, order: l.order, bestOf: l.bestOf ?? null, bestOfLosers: l.bestOfLosers ?? null })) }
@@ -224,7 +226,7 @@ export const updateTournament = async (req: AuthRequest, res: Response, next: Ne
       return next(badRequest("Cannot edit a tournament that is already in progress or completed"));
     }
 
-    const { levels, ...body } = updateSchema.parse(req.body);
+    const { levels, preferredSeason, ...body } = updateSchema.parse(req.body);
     const prevMetric = tournament.metric; // capture before update
 
     const updated = await prisma.tournament.update({
@@ -232,6 +234,8 @@ export const updateTournament = async (req: AuthRequest, res: Response, next: Ne
       data: {
         ...body,
         startDate: body.startDate ? new Date(body.startDate) : undefined,
+        // Only include preferredSeason when the field was actually sent in the request
+        ...(preferredSeason !== undefined ? { preferredSeason: preferredSeason ?? null } : {}),
         // Replace all levels if provided
         ...(levels !== undefined && {
           levels: {
@@ -248,7 +252,7 @@ export const updateTournament = async (req: AuthRequest, res: Response, next: Ne
     });
 
     // Re-assign participant metricValues when metric or preferred season changes
-    if (updated.metric && (updated.metric !== prevMetric || body.preferredSeason !== undefined)) {
+    if (updated.metric && (updated.metric !== prevMetric || preferredSeason !== undefined)) {
       await reassignParticipantMetrics(req.params.id, updated.metric, updated.levels, updated.preferredSeason ?? null);
     }
 
