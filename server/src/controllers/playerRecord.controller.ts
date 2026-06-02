@@ -23,7 +23,7 @@ const recordSchema = z.object({
 const batchSchema = z.object({
   season:   z.string().min(1),
   gameType: z.enum(["01", "cricket", "combo"]).optional(),
-  records:  z.array(recordSchema).min(1).max(5000),
+  records:  z.array(recordSchema).min(1).max(20000),
 });
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
