@@ -300,6 +300,7 @@ export const listPlayers = async (req: AuthRequest, res: Response, next: NextFun
         dni: true, phone: true, province: true, birthDate: true,
         gdprConsent: true, whatsappConsent: true, emailConsent: true,
         ligaCard: true, clubCard: true,
+        emailVerified: true,
         createdAt: true,
       },
       orderBy: { name: "asc" },
@@ -313,26 +314,28 @@ export const updateUserProfile = async (req: AuthRequest, res: Response, next: N
   try {
     if (req.user!.role === "player") return next(forbidden());
     const body = z.object({
-      name:      z.string().min(2).optional(),
-      email:     z.string().email().optional(),
-      phone:     z.string().optional().nullable(),
-      province:  z.string().optional().nullable(),
-      dni:       z.string().optional().nullable(),
-      birthDate: z.string().optional().nullable(),
-      ligaCard:  z.string().max(16).optional().nullable(),
-      clubCard:  z.string().max(16).optional().nullable(),
+      name:          z.string().min(2).optional(),
+      email:         z.string().email().optional(),
+      phone:         z.string().optional().nullable(),
+      province:      z.string().optional().nullable(),
+      dni:           z.string().optional().nullable(),
+      birthDate:     z.string().optional().nullable(),
+      ligaCard:      z.string().max(16).optional().nullable(),
+      clubCard:      z.string().max(16).optional().nullable(),
+      emailVerified: z.boolean().optional(),
     }).parse(req.body);
 
     const updated = await prisma.user.update({
       where: { id: req.params.id },
       data: {
-        ...(body.name      !== undefined && { name: body.name }),
-        ...(body.email     !== undefined && { email: body.email }),
-        ...(body.phone     !== undefined && { phone: body.phone }),
-        ...(body.province  !== undefined && { province: body.province }),
-        ...(body.dni       !== undefined && { dni: body.dni }),
-        ...(body.ligaCard  !== undefined && { ligaCard: body.ligaCard }),
-        ...(body.clubCard  !== undefined && { clubCard: body.clubCard }),
+        ...(body.name          !== undefined && { name: body.name }),
+        ...(body.email         !== undefined && { email: body.email }),
+        ...(body.phone         !== undefined && { phone: body.phone }),
+        ...(body.province      !== undefined && { province: body.province }),
+        ...(body.dni           !== undefined && { dni: body.dni }),
+        ...(body.ligaCard      !== undefined && { ligaCard: body.ligaCard }),
+        ...(body.clubCard      !== undefined && { clubCard: body.clubCard }),
+        ...(body.emailVerified !== undefined && { emailVerified: body.emailVerified }),
         ...(body.birthDate !== undefined && {
           birthDate: body.birthDate ? new Date(body.birthDate) : null,
         }),
@@ -340,7 +343,7 @@ export const updateUserProfile = async (req: AuthRequest, res: Response, next: N
       select: {
         id: true, name: true, email: true, role: true,
         dni: true, phone: true, province: true, birthDate: true,
-        ligaCard: true, clubCard: true, createdAt: true,
+        ligaCard: true, clubCard: true, emailVerified: true, createdAt: true,
       },
     });
     return res.json({ data: updated, message: "Perfil actualizado" });

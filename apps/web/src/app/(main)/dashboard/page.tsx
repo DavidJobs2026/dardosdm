@@ -499,6 +499,7 @@ interface PlayerProfile {
   emailConsent: boolean;
   ligaCard: string | null;
   clubCard: string | null;
+  emailVerified: boolean;
   createdAt: string;
 }
 
@@ -528,8 +529,9 @@ function EditPlayerModal({ player, onClose, onSaved }: {
   const [birthDate, setBirthDate] = useState(
     player.birthDate ? player.birthDate.substring(0, 10) : ""
   );
-  const [ligaCard,  setLigaCard]  = useState(player.ligaCard ?? "");
-  const [clubCard,  setClubCard]  = useState(player.clubCard ?? "");
+  const [ligaCard,      setLigaCard]      = useState(player.ligaCard ?? "");
+  const [clubCard,      setClubCard]      = useState(player.clubCard ?? "");
+  const [emailVerified, setEmailVerified] = useState(player.emailVerified);
   const [saving, setSaving] = useState(false);
 
   const handleSave = async (e: React.FormEvent) => {
@@ -547,6 +549,7 @@ function EditPlayerModal({ player, onClose, onSaved }: {
         birthDate: birthDate || null,
         ligaCard: ligaCard.trim() || null,
         clubCard: clubCard.trim() || null,
+        emailVerified,
       });
       onSaved(data.data);
       toast.success("Perfil actualizado");
@@ -649,6 +652,28 @@ function EditPlayerModal({ player, onClose, onSaved }: {
               />
             </div>
           </div>
+
+          {/* Email verification toggle */}
+          <button
+            type="button"
+            onClick={() => setEmailVerified(v => !v)}
+            className={clsx(
+              "flex items-center justify-between w-full px-4 py-3 rounded-xl border transition-all text-sm font-semibold",
+              emailVerified
+                ? "bg-green-900/20 border-green-600/40 text-green-300 hover:bg-green-900/30"
+                : "bg-amber-900/20 border-amber-600/40 text-amber-300 hover:bg-amber-900/30"
+            )}
+          >
+            <span className="flex items-center gap-2">
+              {emailVerified ? "✓" : "⚠"} Email verificado
+            </span>
+            <span className={clsx(
+              "text-xs font-normal px-2 py-0.5 rounded-full",
+              emailVerified ? "bg-green-700/40 text-green-200" : "bg-amber-700/40 text-amber-200"
+            )}>
+              {emailVerified ? "Verificado" : "Sin verificar"}
+            </span>
+          </button>
 
           {/* Consents — read-only info */}
           <div className="flex items-center gap-4 px-3 py-2 bg-ink-800/50 rounded-lg text-xs text-ink-500">
