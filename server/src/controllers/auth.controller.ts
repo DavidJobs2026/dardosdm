@@ -6,7 +6,7 @@ import { prisma } from "../lib/prisma";
 import { signAccessToken, signRefreshToken, verifyRefreshToken } from "../utils/jwt";
 import { badRequest, unauthorized, notFound } from "../utils/errors";
 import { AuthRequest } from "../middlewares/auth.middleware";
-import { sendWelcomeVerification } from "../lib/email";
+import { sendWelcomeVerification, sendPasswordReset } from "../lib/email";
 
 // ─── Request fingerprint helpers ─────────────────────────────────────────────
 // We bind each refresh token to the User-Agent so a stolen cookie can't be
@@ -414,6 +414,67 @@ export const me = async (req: AuthRequest, res: Response, next: NextFunction) =>
     });
     if (!user) return next(notFound("User"));
     return res.json({ data: user });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ─── Forgot password — send reset email ──────────────────────────────────────
+export const forgotPassword = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { email } = z.object({ email: z.string().email() }).parse(req.body);
+
+    // Always return 200 — never reveal whether the email exists
+    const user = await prisma.user.findUnique({ where: { email } });
+    if (user) {
+      const token   = crypto.randomBytes(32).toString("hex");
+      const expires = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
+
+      await prisma.user.update({
+        where: { id: user.id },
+        data:  { pwResetToken: token, pwResetExpires: expires },
+      });
+
+      const clientUrl = process.env.CLIENT_URL ?? "https://torneos.dardosdm.com";
+      const resetUrl  = `${clientUrl}/auth/reset-password?token=${token}`;
+
+      sendPasswordReset({ to: user.email, name: user.name, resetUrl }).catch((e) =>
+        console.error("[auth] forgot-password email failed:", e)
+      );
+    }
+
+    return res.json({ message: "Si el email existe, recibirás un enlace en breve" });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ─── Reset password — validate token and set new password ────────────────────
+export const resetPassword = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { token, password } = z.object({
+      token:    z.string().min(1),
+      password: z.string().min(6, "La contraseña debe tener al menos 6 caracteres"),
+    }).parse(req.body);
+
+    const user = await prisma.user.findUnique({ where: { pwResetToken: token } });
+
+    if (!user || !user.pwResetExpires || user.pwResetExpires < new Date()) {
+      return next(badRequest("El enlace de restablecimiento no es válido o ha expirado"));
+    }
+
+    const passwordHash = await bcrypt.hash(password, 12);
+
+    // Update password and clear reset token; also invalidate all refresh tokens
+    await prisma.$transaction([
+      prisma.user.update({
+        where: { id: user.id },
+        data:  { passwordHash, pwResetToken: null, pwResetExpires: null },
+      }),
+      prisma.refreshToken.deleteMany({ where: { userId: user.id } }),
+    ]);
+
+    return res.json({ message: "Contraseña actualizada correctamente" });
   } catch (err) {
     next(err);
   }

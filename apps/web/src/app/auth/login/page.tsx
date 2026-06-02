@@ -161,6 +161,12 @@ export default function LoginPage() {
               </div>
             )}
 
+            <div className="flex justify-end -mt-1">
+              <Link href="/auth/forgot-password" className="text-xs text-ink-500 hover:text-red-400 transition-colors">
+                ¿Olvidaste tu contraseña?
+              </Link>
+            </div>
+
             <button type="submit" className="btn-primary w-full py-3 text-base mt-2 shadow-red-glow"
               disabled={isLoading}>
               {isLoading ? "Entrando..." : <>Iniciar sesión <ChevronRight className="w-4 h-4" /></>}

@@ -1,5 +1,5 @@
 import { Router, IRouter } from "express";
-import { register, login, logout, logoutAll, refresh, me, checkDni, checkEmail, checkPhone, verifyEmail, resendVerification, requestVerification } from "../controllers/auth.controller";
+import { register, login, logout, logoutAll, refresh, me, checkDni, checkEmail, checkPhone, verifyEmail, resendVerification, requestVerification, forgotPassword, resetPassword } from "../controllers/auth.controller";
 import { authenticate } from "../middlewares/auth.middleware";
 
 const router: IRouter = Router();
@@ -16,5 +16,7 @@ router.post("/refresh",            refresh);
 router.get("/me",                  authenticate, me);
 router.post("/resend-verification",         authenticate, resendVerification);
 router.post("/request-verification",        requestVerification);              // public — email in body
+router.post("/forgot-password",             forgotPassword);                   // public — send reset email
+router.post("/reset-password",              resetPassword);                    // public — token + new password
 
 export default router;

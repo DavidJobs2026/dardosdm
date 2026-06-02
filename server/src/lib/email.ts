@@ -217,6 +217,49 @@ async function sendEmail(to: string, subject: string, html: string, text: string
   if (error) throw new Error(`Resend error: ${error.message}`);
 }
 
+// ─── Password reset email ─────────────────────────────────────────────────────
+export async function sendPasswordReset(opts: {
+  to: string;
+  name: string;
+  resetUrl: string;
+}) {
+  const { to, name, resetUrl } = opts;
+  const firstName = esc(name.split(" ")[0]);
+
+  const html = emailShell(`
+    <h2 style="margin:0 0 8px;color:#fff;font-size:20px;font-weight:700;">
+      Restablecer contraseña 🔑
+    </h2>
+    <p style="margin:0 0 20px;color:#a1a1aa;font-size:14px;line-height:1.7;">
+      Hola <strong style="color:#e4e4e7;">${firstName}</strong>, recibimos una solicitud para restablecer la contraseña de tu cuenta.
+      Si no fuiste tú, puedes ignorar este mensaje.
+    </p>
+
+    <div style="text-align:center;margin:32px 0;">
+      <a href="${resetUrl}"
+         style="display:inline-block;background:#dc2626;color:#ffffff;text-decoration:none;font-weight:700;font-size:15px;padding:15px 40px;border-radius:12px;letter-spacing:0.2px;box-shadow:0 4px 24px rgba(220,38,38,.35);">
+        🔑 &nbsp; Cambiar contraseña
+      </a>
+    </div>
+
+    <p style="margin:0 0 5px;color:#71717a;font-size:12px;text-align:center;">
+      Este enlace expira en <strong style="color:#a1a1aa;">1 hora</strong>.
+    </p>
+    <p style="margin:0;color:#71717a;font-size:12px;text-align:center;">
+      Si no solicitaste este cambio, ignora este mensaje — tu contraseña no cambiará.
+    </p>
+
+    <hr style="border:none;border-top:1px solid #27272a;margin:24px 0;" />
+    <p style="margin:0;color:#52525b;font-size:11px;text-align:center;word-break:break-all;">
+      Si el botón no funciona: <a href="${resetUrl}" style="color:#3f3f46;">${resetUrl}</a>
+    </p>
+  `);
+
+  const text = `Hola ${firstName}, recibimos una solicitud para restablecer tu contraseña en DardosDM.\n\nCambia tu contraseña aquí (válido 1 hora):\n${resetUrl}\n\nSi no solicitaste este cambio, ignora este mensaje.`;
+
+  await sendEmail(to, `Restablecer contraseña en ${APP_NAME}`, html, text);
+}
+
 // ─── Inscription pending email ────────────────────────────────────────────────
 export async function sendInscriptionPending(opts: {
   to: string;
