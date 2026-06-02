@@ -1349,7 +1349,7 @@ export const playerInscribe = async (req: AuthRequest, res: Response, next: Next
           tournamentName: tournament!.name,
           tournamentFormat: tournament!.format ?? undefined,
           tournamentDate: tournament!.startDate?.toISOString() ?? null,
-          tournamentUrl: `${clientUrl}/torneos/${tournament!.id}`,
+          tournamentUrl: `${clientUrl}/tournaments/${tournament!.id}`,
         });
       })
       .catch(err => console.error("[email] inscription pending:", err));
@@ -1465,7 +1465,7 @@ export const resolveInscription = async (req: AuthRequest, res: Response, next: 
             tournamentName: t.name,
             tournamentFormat: t.format ?? undefined,
             tournamentDate: t.startDate?.toISOString() ?? null,
-            tournamentUrl: `${clientUrl}/torneos/${tournamentId}`,
+            tournamentUrl: `${clientUrl}/tournaments/${tournamentId}`,
           });
         })
         .catch(err => console.error("[email] inscription approved:", err));
