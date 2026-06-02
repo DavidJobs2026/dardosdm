@@ -5,6 +5,7 @@ import { AuthRequest } from "../middlewares/auth.middleware";
 import { notFound, forbidden, badRequest } from "../utils/errors";
 import { Server as SocketServer } from "socket.io";
 import { audit } from "../lib/audit";
+import { sendPushToUser } from "../lib/push";
 
 const scoreSchema = z.object({
   score1: z.number().int().min(0),
@@ -208,12 +209,74 @@ export const reportResult = (io: SocketServer) => async (req: AuthRequest, res: 
     // Emit real-time update
     io.to(`tournament:${match.tournamentId}`).emit("match:updated", updatedMatch);
 
+    // Push notification to both participants — fire-and-forget (never delays response)
+    sendMatchResultPush(
+      match.tournamentId,
+      match.participant1Id,
+      match.participant2Id,
+      score1,
+      score2,
+      winnerId,
+    ).catch(() => {});
+
     audit({ req, action: "match.report", entityType: "match", entityId: match.id, details: { tournamentId: match.tournamentId, score1, score2, winnerId } });
     return res.json({ data: updatedMatch, message: "Result reported" });
   } catch (err) {
     next(err);
   }
 };
+
+// ─── Push Notification ───────────────────────────────────────────────────────
+
+async function sendMatchResultPush(
+  tournamentId: string,
+  participant1Id: string | null,
+  participant2Id: string | null,
+  score1: number | null,
+  score2: number | null,
+  winnerId: string | null,
+) {
+  if (!participant1Id || !participant2Id) return;
+
+  const [p1, p2, tournament] = await Promise.all([
+    prisma.participant.findUnique({
+      where: { id: participant1Id },
+      select: { userId: true, user: { select: { id: true, name: true } } },
+    }),
+    prisma.participant.findUnique({
+      where: { id: participant2Id },
+      select: { userId: true, user: { select: { id: true, name: true } } },
+    }),
+    prisma.tournament.findUnique({
+      where: { id: tournamentId },
+      select: { name: true },
+    }),
+  ]);
+
+  if (!p1?.user || !p2?.user) return;  // skip team-based participants with no user
+
+  const name1 = p1.user.name;
+  const name2 = p2.user.name;
+
+  // Build score line: "Jonatan Loarce 2 - 0 Jose Enrique"
+  const scoreLine =
+    score1 != null && score2 != null
+      ? `${name1} ${score1} - ${score2} ${name2}`
+      : winnerId === participant1Id
+        ? `${name1} ganó a ${name2}`
+        : `${name2} ganó a ${name1}`;
+
+  const payload = {
+    title: `🎯 Resultado — ${tournament?.name ?? "Torneo"}`,
+    body: scoreLine,
+    url: "/torneos",
+  };
+
+  await Promise.allSettled([
+    sendPushToUser(p1.user.id, payload),
+    sendPushToUser(p2.user.id, payload),
+  ]);
+}
 
 // ─── ELO Calculation ─────────────────────────────────────────────────────────
 
