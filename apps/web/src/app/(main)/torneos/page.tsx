@@ -189,7 +189,7 @@ export default function TorneosPage() {
   const [tournaments, setTournaments] = useState<(Tournament & { _inscriptionStatus?: "none" | "pending" | "confirmed" })[]>([]);
   const [loading, setLoading] = useState(true);
   const [dismissedBanner, setDismissedBanner] = useState(false);
-  const { isSupported, isSubscribed, isLoading: pushLoading, subscribe } = usePushNotifications();
+  const { isSupported, isSubscribed, isLoading: pushLoading, subscribe, needsInstall } = usePushNotifications();
 
   useEffect(() => {
     if (!user) {
@@ -271,7 +271,7 @@ export default function TorneosPage() {
         </div>
       )}
 
-      {/* Push notification banner */}
+      {/* Push notification banner — standard browsers */}
       {isSupported && !isSubscribed && !dismissedBanner && (
         <div className="bg-ink-900 border border-ink-700 rounded-xl p-4 flex items-center gap-3">
           <Bell className="w-5 h-5 text-red-400 shrink-0" />
@@ -286,6 +286,25 @@ export default function TorneosPage() {
           >
             {pushLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Activar"}
           </button>
+          <button
+            onClick={() => setDismissedBanner(true)}
+            className="text-ink-600 hover:text-ink-400 transition-colors text-xs shrink-0"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
+      {/* iOS install hint — push only works in installed PWA on iOS */}
+      {needsInstall && !dismissedBanner && (
+        <div className="bg-ink-900 border border-ink-700 rounded-xl p-4 flex items-center gap-3">
+          <Bell className="w-5 h-5 text-amber-400 shrink-0" />
+          <div className="flex-1">
+            <p className="text-white text-sm font-semibold">Instala la app para notificaciones</p>
+            <p className="text-ink-500 text-xs">
+              En iPhone: pulsa <span className="text-white">Compartir</span> → <span className="text-white">Añadir a pantalla de inicio</span>
+            </p>
+          </div>
           <button
             onClick={() => setDismissedBanner(true)}
             className="text-ink-600 hover:text-ink-400 transition-colors text-xs shrink-0"

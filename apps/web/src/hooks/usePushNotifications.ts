@@ -13,21 +13,47 @@ function urlBase64ToUint8Array(base64String: string): Uint8Array {
   return arr;
 }
 
+/** Returns true when running on iOS (iPhone / iPad) */
+function isIOS(): boolean {
+  if (typeof navigator === "undefined") return false;
+  return /iP(hone|ad|od)/.test(navigator.userAgent);
+}
+
+/** Returns true when the app is running as an installed PWA (standalone mode) */
+function isStandalone(): boolean {
+  if (typeof window === "undefined") return false;
+  return (
+    window.matchMedia("(display-mode: standalone)").matches ||
+    (navigator as any).standalone === true
+  );
+}
+
 export function usePushNotifications() {
-  const [isSupported, setIsSupported] = useState(false);
+  const [isSupported,  setIsSupported]  = useState(false);
   const [isSubscribed, setIsSubscribed] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading,    setIsLoading]    = useState(false);
+  // true when iOS and NOT installed as PWA — show "add to home screen" hint instead
+  const [needsInstall, setNeedsInstall] = useState(false);
   // "denied" = browser permission blocked; "granted" = allowed; null = not yet asked
-  const [permission, setPermission] = useState<NotificationPermission | null>(null);
+  const [permission,   setPermission]   = useState<NotificationPermission | null>(null);
 
   useEffect(() => {
-    const supported =
+    // Push notifications require:
+    //   1. Service Worker + PushManager + Notification API in browser
+    //   2. A VAPID public key configured at build time
+    const browserSupported =
       typeof window !== "undefined" &&
       "serviceWorker" in navigator &&
       "PushManager" in window &&
       "Notification" in window;
 
-    if (!supported) {
+    // Without a VAPID key the subscribe flow is broken — don't show the banner
+    if (!browserSupported || !VAPID_PUBLIC_KEY) {
+      // Special case: iOS in a regular browser tab doesn't support push, but
+      // it DOES work once installed as a PWA. Show an install hint instead.
+      if (isIOS() && !isStandalone()) {
+        setNeedsInstall(true);
+      }
       setIsSupported(false);
       return;
     }
@@ -119,5 +145,5 @@ export function usePushNotifications() {
     }
   };
 
-  return { isSupported, isSubscribed, isLoading, permission, subscribe, unsubscribe };
+  return { isSupported, isSubscribed, isLoading, permission, subscribe, unsubscribe, needsInstall };
 }
