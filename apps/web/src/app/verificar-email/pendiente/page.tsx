@@ -1,27 +1,30 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { useState, Suspense } from "react";
 import Link from "next/link";
 import { Trophy, Mail, RefreshCw, ArrowRight, Loader2 } from "lucide-react";
 import toast from "react-hot-toast";
 import { api } from "@/lib/api";
-import { useAuthStore } from "@/store/auth.store";
 
 function PendingContent() {
-  const router = useRouter();
-  const { user } = useAuthStore();
+  // Email is passed as a query param from the registration page (?email=...).
+  // We use the PUBLIC /auth/request-verification endpoint so no login is required.
+  const searchParams = useSearchParams();
+  const email = searchParams.get("email") ?? "";
+
   const [resending, setResending] = useState(false);
   const [sent, setSent] = useState(false);
 
   const handleResend = async () => {
-    if (!user) {
-      toast.error("Inicia sesión para reenviar el email");
+    if (!email) {
+      toast.error("No se encontró tu dirección de email. Inténtalo desde el registro.");
       return;
     }
     setResending(true);
     try {
-      await api.post("/auth/resend-verification");
+      // Public endpoint — only needs the email address, no auth token required
+      await api.post("/auth/request-verification", { email });
       setSent(true);
       toast.success("Email reenviado. Revisa tu bandeja de entrada.");
     } catch (err: any) {

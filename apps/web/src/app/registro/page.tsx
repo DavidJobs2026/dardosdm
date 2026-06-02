@@ -236,7 +236,7 @@ export default function RegistroPage() {
         emailConsent,
       });
       toast.success("¡Cuenta creada! Revisa tu email para verificarla.");
-      router.push("/verificar-email/pendiente");
+      router.push(`/verificar-email/pendiente?email=${encodeURIComponent(email)}`);
     } catch (err: any) {
       toast.error(err.response?.data?.message || "Error al crear la cuenta");
     } finally {
