@@ -14,6 +14,8 @@ import { clsx } from "clsx";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
 
+const SERVER_ORIGIN = process.env.NEXT_PUBLIC_API_URL?.replace("/api/v1", "") ?? "http://localhost:4000";
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 const STATUS_BADGE: Record<string, string> = {
@@ -73,7 +75,7 @@ function TournamentCard({
   };
 
   const imageUrl = tournament.imageUrl
-    ? `http://localhost:4000${tournament.imageUrl}`
+    ? `${SERVER_ORIGIN}${tournament.imageUrl}`
     : null;
 
   return (
