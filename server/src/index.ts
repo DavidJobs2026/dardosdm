@@ -33,8 +33,8 @@ app.use(morgan("dev", {
   skip: (req) => req.path.includes("verify-email"),
 }));
 app.use(cookieParser());
-app.use(express.json({ limit: "10mb" }));
-app.use(express.urlencoded({ extended: true, limit: "10mb" }));
+app.use(express.json({ limit: "2mb" }));
+app.use(express.urlencoded({ extended: true, limit: "2mb" }));
 // Strict limiter for auth endpoints (brute-force protection)
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 min
@@ -78,6 +78,7 @@ app.use("/uploads", (_req, res, next) => {
 // ─── Routes ───────────────────────────────────────────────────────────────────
 app.use("/api/v1/auth/check-email",           enumerationLimiter); // 20/15min — prevents bulk enumeration
 app.use("/api/v1/auth/check-phone",           enumerationLimiter);
+app.use("/api/v1/auth/check-dni",             enumerationLimiter); // 20/15min — prevents DNI enumeration
 app.use("/api/v1/auth/request-verification",  emailSendLimiter);   // 3/15min — prevents email spam
 app.use("/api/v1/auth/resend-verification",   emailSendLimiter);   // 3/15min — same protection authenticated
 app.use("/api/v1/auth", authLimiter);

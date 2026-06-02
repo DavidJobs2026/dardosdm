@@ -4,6 +4,7 @@ import { prisma } from "../lib/prisma";
 import { AuthRequest } from "../middlewares/auth.middleware";
 import { notFound, forbidden, badRequest } from "../utils/errors";
 import { Server as SocketServer } from "socket.io";
+import { audit } from "../lib/audit";
 
 const scoreSchema = z.object({
   score1: z.number().int().min(0),
@@ -207,6 +208,7 @@ export const reportResult = (io: SocketServer) => async (req: AuthRequest, res: 
     // Emit real-time update
     io.to(`tournament:${match.tournamentId}`).emit("match:updated", updatedMatch);
 
+    audit({ req, action: "match.report", entityType: "match", entityId: match.id, details: { tournamentId: match.tournamentId, score1, score2, winnerId } });
     return res.json({ data: updatedMatch, message: "Result reported" });
   } catch (err) {
     next(err);
@@ -642,6 +644,7 @@ export const resetMatchResult = async (req: AuthRequest, res: Response, next: Ne
       },
     });
 
+    audit({ req, action: "match.reset", entityType: "match", entityId: req.params.matchId, details: { tournamentId: req.params.id } });
     return res.json({ data: updated, message: "Resultado del partido reiniciado" });
   } catch (err) { next(err); }
 };

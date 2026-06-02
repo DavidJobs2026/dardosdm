@@ -1,10 +1,11 @@
 import { IRouter, Router } from "express";
-import { searchUsers, getMyProfile, batchCreateUsers, findOrCreatePlayer, listPlayers, listUsers, updateUserRole, updateUserName, updateUserPassword, updateUserProfile, resetPasswordToDni, deleteUser } from "../controllers/user.controller";
+import { searchUsers, getMyProfile, batchCreateUsers, findOrCreatePlayer, listPlayers, listUsers, updateUserRole, updateUserName, updateUserPassword, updateUserProfile, resetPasswordToDni, deleteUser, getAuditLogs } from "../controllers/user.controller";
 import { authenticate } from "../middlewares/auth.middleware";
 
 const router: IRouter = Router();
 
 router.get("/",                    authenticate, listUsers);
+router.get("/audit-logs",          authenticate, getAuditLogs);
 router.get("/players",             authenticate, listPlayers);
 router.patch("/:id/profile",       authenticate, updateUserProfile);
 router.post("/:id/reset-password", authenticate, resetPasswordToDni);

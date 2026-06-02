@@ -3,6 +3,7 @@ import { z } from "zod";
 import { prisma } from "../lib/prisma";
 import { AuthRequest } from "../middlewares/auth.middleware";
 import { notFound, forbidden, badRequest } from "../utils/errors";
+import { audit } from "../lib/audit";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -176,6 +177,11 @@ export const addParticipant = async (req: AuthRequest, res: Response, next: Next
       include: INCLUDE_PARTICIPANT,
     });
 
+    // Only log when an organizer explicitly adds a participant (not self-registration)
+    if (!isSelfRegister) {
+      const participantName = user.name;
+      audit({ req, action: "participant.add", entityType: "participant", entityId: participant.id, entityName: participantName, details: { tournamentId: req.params.id } });
+    }
     return res.status(201).json({ data: participant });
   } catch (err) {
     next(err);
@@ -329,6 +335,7 @@ export const addGroupParticipant = async (req: AuthRequest, res: Response, next:
       include: INCLUDE_PARTICIPANT,
     });
 
+    audit({ req, action: "participant.add", entityType: "participant", entityId: participant.id, entityName: groupName, details: { tournamentId: req.params.id, playerIds } });
     return res.status(201).json({ data: participant });
   } catch (err) {
     next(err);
@@ -439,6 +446,7 @@ export const removeParticipant = async (req: AuthRequest, res: Response, next: N
     }
 
     await prisma.participant.delete({ where: { id: req.params.participantId, tournamentId: req.params.id } });
+    audit({ req, action: "participant.remove", entityType: "participant", entityId: req.params.participantId, details: { tournamentId: req.params.id } });
     return res.json({ data: null, message: "Participant removed" });
   } catch (err) {
     next(err);
@@ -495,6 +503,7 @@ export const updatePayment = async (req: AuthRequest, res: Response, next: NextF
       data:  { paymentStatus, paymentMethod: paymentMethod ?? null },
       include: INCLUDE_PARTICIPANT,
     });
+    audit({ req, action: "participant.payment", entityType: "participant", entityId: req.params.participantId, details: { tournamentId: req.params.id, paymentStatus, paymentMethod } });
     return res.json({ data: participant });
   } catch (err) {
     next(err);

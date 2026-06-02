@@ -7,6 +7,7 @@ import { AuthRequest } from "../middlewares/auth.middleware";
 import { notFound, forbidden, badRequest } from "../utils/errors";
 import { generateBracket, generateRoundRobin, generateSingleElimination, computeRRStandings } from "../services/bracket.service";
 import { sendInscriptionPending, sendInscriptionApproved } from "../lib/email";
+import { audit } from "../lib/audit";
 
 // Valid odd match lengths — global and per-level
 const GLOBAL_BEST_OF = [1, 3, 5, 7] as const;
@@ -137,6 +138,7 @@ export const createTournament = async (req: AuthRequest, res: Response, next: Ne
       },
       include: { organizer: { select: selectOrganizer }, levels: { orderBy: { order: "asc" } } },
     });
+    audit({ req, action: "tournament.create", entityType: "tournament", entityId: tournament.id, entityName: tournament.name });
     return res.status(201).json({ data: { ...tournament, createdBy: tournament.createdById, participantsCount: 0 } });
   } catch (err) {
     next(err);
@@ -229,6 +231,7 @@ export const updateTournament = async (req: AuthRequest, res: Response, next: Ne
       await reassignParticipantMetrics(req.params.id, updated.metric, updated.levels);
     }
 
+    audit({ req, action: "tournament.update", entityType: "tournament", entityId: updated.id, entityName: updated.name });
     return res.json({ data: { ...updated, createdBy: updated.createdById, participantsCount: updated._count.participants, _count: undefined } });
   } catch (err) {
     next(err);
@@ -266,6 +269,7 @@ export const deleteTournament = async (req: AuthRequest, res: Response, next: Ne
     if (tournament.createdById !== req.user!.userId && req.user!.role !== "admin" && req.user!.role !== "organizer") {
       return next(forbidden());
     }
+    audit({ req, action: "tournament.delete", entityType: "tournament", entityId: tournament.id, entityName: tournament.name });
     await prisma.tournament.delete({ where: { id: req.params.id } });
     return res.json({ data: null, message: "Tournament deleted" });
   } catch (err) {
@@ -512,6 +516,7 @@ export const startTournament = async (req: AuthRequest, res: Response, next: Nex
         }
       }
 
+      audit({ req, action: "tournament.start", entityType: "tournament", entityId: tournament.id, entityName: tournament.name });
       return res.json({ data: null, message: "Tournament started" });
     } else {
       // ── Single bracket (original behaviour) ─────────────────────────────────
@@ -542,6 +547,7 @@ export const startTournament = async (req: AuthRequest, res: Response, next: Nex
       }
     }
 
+    audit({ req, action: "tournament.start", entityType: "tournament", entityId: tournament.id, entityName: tournament.name });
     return res.json({ data: null, message: "Tournament started" });
   } catch (err) {
     next(err);
@@ -657,6 +663,7 @@ export const finalizeTournament = async (req: AuthRequest, res: Response, next: 
     }
 
     await prisma.tournament.update({ where: { id: tournament.id }, data: { status: "completed" } });
+    audit({ req, action: "tournament.finalize", entityType: "tournament", entityId: tournament.id, entityName: tournament.name });
     return res.json({ data: null, message: "Tournament finalized" });
   } catch (err) {
     next(err);
@@ -683,6 +690,7 @@ export const resetTournament = async (req: AuthRequest, res: Response, next: Nex
       prisma.match.deleteMany({ where: { tournamentId: tournament.id } }),
       prisma.tournament.update({ where: { id: tournament.id }, data: { status: "registration" } }),
     ]);
+    audit({ req, action: "tournament.reset", entityType: "tournament", entityId: tournament.id, entityName: tournament.name });
     return res.json({ data: null, message: "Tournament reset to registration" });
   } catch (err) {
     next(err);
@@ -794,6 +802,7 @@ export const openRegistration = async (req: AuthRequest, res: Response, next: Ne
       return next(badRequest("Only draft tournaments can be opened for registration"));
     }
     await prisma.tournament.update({ where: { id: tournament.id }, data: { status: "registration" } });
+    audit({ req, action: "tournament.open_registration", entityType: "tournament", entityId: tournament.id, entityName: tournament.name });
     return res.json({ data: null, message: "Registration opened" });
   } catch (err) {
     next(err);

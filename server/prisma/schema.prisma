@@ -83,6 +83,7 @@ model User {
   playerStats          PlayerStats?
   refreshTokens        RefreshToken[]
   pushSubscriptions    PushSubscription[]
+  auditLogs            AuditLog[]
 
   @@map("users")
 }
@@ -337,6 +338,24 @@ model PlayerRecord {
   @@index([dni])
   @@index([season, gameType])
   @@map("player_records")
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  userId     String   @map("user_id")
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  action     String                        // "tournament.create" | "tournament.delete" | etc.
+  entityType String   @map("entity_type") // "tournament" | "match" | "participant" | "user"
+  entityId   String?  @map("entity_id")
+  entityName String?  @map("entity_name") // nombre legible (torneo, jugador, etc.)
+  details    Json?                         // contexto adicional
+  ip         String?                       // IP del actor
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  @@index([userId])
+  @@index([action])
+  @@index([createdAt])
+  @@map("audit_logs")
 }
 
 model PushSubscription {

@@ -6,6 +6,7 @@ import { AuthRequest } from "../middlewares/auth.middleware";
 import bcrypt from "bcryptjs";
 import { badRequest, forbidden } from "../utils/errors";
 import { Prisma } from "@prisma/client";
+import { audit } from "../lib/audit";
 
 /** GET /users/search?q=...&tournamentId=... */
 export const searchUsers = async (req: AuthRequest, res: Response, next: NextFunction) => {
@@ -368,6 +369,7 @@ export const resetPasswordToDni = async (req: AuthRequest, res: Response, next: 
 
     const hash = await bcrypt.hash(user.dni.toUpperCase(), 12);
     await prisma.user.update({ where: { id: user.id }, data: { passwordHash: hash } });
+    audit({ req, action: "user.reset_password", entityType: "user", entityId: user.id, entityName: user.name });
     return res.json({ message: `Contraseña de ${user.name} restablecida al DNI/NIE` });
   } catch (err) { next(err); }
 };
@@ -392,11 +394,13 @@ export const updateUserRole = async (req: AuthRequest, res: Response, next: Next
       role: z.enum(["admin", "organizer", "player"]),
     }).parse(req.body);
 
+    const target = await prisma.user.findUnique({ where: { id: req.params.id }, select: { role: true, name: true } });
     const updated = await prisma.user.update({
       where: { id: req.params.id },
       data: { role },
       select: { id: true, name: true, email: true, role: true },
     });
+    audit({ req, action: "user.role_change", entityType: "user", entityId: updated.id, entityName: updated.name, details: { from: target?.role, to: role } });
     return res.json({ data: updated, message: "Rol actualizado" });
   } catch (err) { next(err); }
 };
@@ -438,12 +442,47 @@ export const updateUserPassword = async (req: AuthRequest, res: Response, next: 
       if (target.role !== "player") return next(forbidden("Los organizadores solo pueden modificar jugadores"));
     }
 
+    const targetUser = await prisma.user.findUnique({ where: { id: req.params.id }, select: { name: true } });
     const hash = await bcrypt.hash(password, 12);
     await prisma.user.update({
       where: { id: req.params.id },
       data: { passwordHash: hash },
     });
+    audit({ req, action: "user.reset_password", entityType: "user", entityId: req.params.id, entityName: targetUser?.name });
     return res.json({ message: "Contraseña actualizada" });
+  } catch (err) { next(err); }
+};
+
+/** GET /admin/audit-logs — paginated audit log (admin only) */
+export const getAuditLogs = async (req: AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    if (req.user!.role !== "admin") return next(forbidden());
+
+    const page   = Math.max(1, Number(req.query.page)  || 1);
+    const limit  = Math.min(100, Math.max(1, Number(req.query.limit) || 50));
+    const skip   = (page - 1) * limit;
+    const action = req.query.action ? String(req.query.action) : undefined;
+    const userId = req.query.userId ? String(req.query.userId) : undefined;
+
+    const where = {
+      ...(action ? { action } : {}),
+      ...(userId ? { userId } : {}),
+    };
+
+    const [logs, total] = await Promise.all([
+      prisma.auditLog.findMany({
+        where,
+        orderBy: { createdAt: "desc" },
+        skip,
+        take: limit,
+        include: {
+          user: { select: { id: true, name: true, email: true, role: true } },
+        },
+      }),
+      prisma.auditLog.count({ where }),
+    ]);
+
+    return res.json({ data: logs, total, page, limit, totalPages: Math.ceil(total / limit) });
   } catch (err) { next(err); }
 };
 

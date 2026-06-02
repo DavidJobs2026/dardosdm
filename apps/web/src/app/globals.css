@@ -150,7 +150,6 @@
   .prose-legal tr:nth-child(even) td {
     @apply bg-ink-900/40;
   }
-}
 
 /* ── Error flash animation ───────────────────────────── */
 @keyframes error-flash {

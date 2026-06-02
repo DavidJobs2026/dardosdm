@@ -9,7 +9,7 @@ import { useRouter } from "next/navigation";
 import {
   Plus, Trophy, Users, Play, CheckCircle, ArrowRight, Swords,
   ShieldCheck, CalendarCog, Trash2, ChevronDown, Loader2, UserPlus, X, Eye, EyeOff, Pencil, KeyRound,
-  UserCog, RotateCcw, Phone, MapPin, CreditCard, Search,
+  UserCog, RotateCcw, Phone, MapPin, CreditCard, Search, ClipboardList, ChevronLeft, ChevronRight,
 } from "lucide-react";
 import { clsx } from "clsx";
 import toast from "react-hot-toast";
@@ -851,6 +851,172 @@ function PlayerManagement() {
   );
 }
 
+// ─── Action labels (audit log) ────────────────────────────────────────────────
+const ACTION_LABELS: Record<string, string> = {
+  "tournament.create":            "Torneo creado",
+  "tournament.update":            "Torneo editado",
+  "tournament.delete":            "Torneo eliminado",
+  "tournament.start":             "Torneo iniciado",
+  "tournament.finalize":          "Torneo finalizado",
+  "tournament.reset":             "Torneo reiniciado",
+  "tournament.open_registration": "Inscripciones abiertas",
+  "tournament.close_registration":"Inscripciones cerradas",
+  "participant.add":              "Participante añadido",
+  "participant.remove":           "Participante eliminado",
+  "participant.payment":          "Pago actualizado",
+  "participant.no_show":          "No presentado",
+  "match.report":                 "Resultado registrado",
+  "match.reset":                  "Resultado reiniciado",
+  "user.role_change":             "Rol cambiado",
+  "user.reset_password":          "Contraseña restablecida",
+  "user.ban":                     "Usuario bloqueado",
+};
+
+const ACTION_COLOR: Record<string, string> = {
+  "tournament.delete":   "text-red-400 bg-red-900/20",
+  "tournament.reset":    "text-orange-400 bg-orange-900/20",
+  "tournament.start":    "text-green-400 bg-green-900/20",
+  "tournament.finalize": "text-purple-400 bg-purple-900/20",
+  "user.role_change":    "text-yellow-400 bg-yellow-900/20",
+  "user.reset_password": "text-yellow-400 bg-yellow-900/20",
+  "match.report":        "text-blue-400 bg-blue-900/20",
+};
+
+interface AuditEntry {
+  id: string;
+  action: string;
+  entityType: string;
+  entityId: string | null;
+  entityName: string | null;
+  details: Record<string, unknown> | null;
+  ip: string | null;
+  createdAt: string;
+  user: { id: string; name: string; email: string; role: string };
+}
+
+function AuditLogPanel() {
+  const [logs,    setLogs]    = useState<AuditEntry[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [page,    setPage]    = useState(1);
+  const [total,   setTotal]   = useState(0);
+  const [filter,  setFilter]  = useState("");
+  const LIMIT = 25;
+
+  const load = (p: number, q: string) => {
+    setLoading(true);
+    const params = new URLSearchParams({ page: String(p), limit: String(LIMIT) });
+    if (q) params.set("action", q);
+    api.get(`/users/audit-logs?${params}`)
+      .then(({ data }) => {
+        setLogs(data.data);
+        setTotal(data.total);
+      })
+      .catch(() => toast.error("Error cargando logs"))
+      .finally(() => setLoading(false));
+  };
+
+  useEffect(() => { load(1, ""); }, []);
+
+  const handleFilterChange = (v: string) => {
+    setFilter(v);
+    setPage(1);
+    load(1, v);
+  };
+
+  const handlePage = (p: number) => {
+    setPage(p);
+    load(p, filter);
+  };
+
+  const totalPages = Math.ceil(total / LIMIT);
+
+  const fmt = (iso: string) => {
+    const d = new Date(iso);
+    return d.toLocaleString("es-ES", { day: "2-digit", month: "2-digit", year: "2-digit", hour: "2-digit", minute: "2-digit" });
+  };
+
+  return (
+    <div className="space-y-4">
+      {/* Filters */}
+      <div className="flex gap-2 flex-wrap">
+        <select
+          value={filter}
+          onChange={e => handleFilterChange(e.target.value)}
+          className="input text-sm py-2 pr-8 flex-1 min-w-[180px]"
+        >
+          <option value="">Todas las acciones</option>
+          {Object.entries(ACTION_LABELS).map(([k, v]) => (
+            <option key={k} value={k}>{v}</option>
+          ))}
+        </select>
+        <button onClick={() => handleFilterChange("")}
+          className="px-3 py-2 text-xs text-ink-400 hover:text-white border border-ink-700 rounded-lg hover:bg-ink-800 transition-colors">
+          Limpiar
+        </button>
+      </div>
+
+      {/* Log list */}
+      {loading ? (
+        <div className="space-y-2">
+          {[1,2,3,4,5].map(i => <div key={i} className="h-14 rounded-lg bg-ink-800 animate-pulse" />)}
+        </div>
+      ) : logs.length === 0 ? (
+        <p className="text-center text-ink-500 py-10 text-sm">Sin registros</p>
+      ) : (
+        <div className="space-y-1.5">
+          {logs.map(log => (
+            <div key={log.id} className="flex items-start gap-3 p-3 rounded-xl bg-ink-800 border border-ink-700/60">
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className={clsx(
+                    "inline-flex items-center px-2 py-0.5 rounded-md text-xs font-semibold",
+                    ACTION_COLOR[log.action] ?? "text-ink-300 bg-ink-700"
+                  )}>
+                    {ACTION_LABELS[log.action] ?? log.action}
+                  </span>
+                  {log.entityName && (
+                    <span className="text-ink-300 text-xs font-medium truncate max-w-[160px]" title={log.entityName}>
+                      {log.entityName}
+                    </span>
+                  )}
+                </div>
+                <div className="flex items-center gap-3 mt-1.5 text-xs text-ink-500 flex-wrap">
+                  <span className="font-medium text-ink-400">{log.user.name}</span>
+                  <span>·</span>
+                  <span>{fmt(log.createdAt)}</span>
+                  {log.ip && <><span>·</span><span className="font-mono">{log.ip}</span></>}
+                  {log.details && log.action === "user.role_change" && (log.details as any).from && (
+                    <><span>·</span>
+                    <span>{(log.details as any).from} → {(log.details as any).to}</span></>
+                  )}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Pagination */}
+      {totalPages > 1 && (
+        <div className="flex items-center justify-between pt-2">
+          <span className="text-xs text-ink-500">{total} registros</span>
+          <div className="flex items-center gap-1">
+            <button disabled={page <= 1} onClick={() => handlePage(page - 1)}
+              className="p-1.5 rounded-lg text-ink-400 hover:text-white hover:bg-ink-800 disabled:opacity-30 transition-colors">
+              <ChevronLeft className="w-4 h-4" />
+            </button>
+            <span className="text-xs text-ink-400 px-2">{page} / {totalPages}</span>
+            <button disabled={page >= totalPages} onClick={() => handlePage(page + 1)}
+              className="p-1.5 rounded-lg text-ink-400 hover:text-white hover:bg-ink-800 disabled:opacity-30 transition-colors">
+              <ChevronRight className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Main page ────────────────────────────────────────────────────────────────
 export default function DashboardPage() {
   const { user } = useAuthStore();
@@ -860,6 +1026,7 @@ export default function DashboardPage() {
   const [showRoleMenu,   setShowRoleMenu]   = useState(false);
   const [showUserMgmt,   setShowUserMgmt]   = useState(false);
   const [showPlayerMgmt, setShowPlayerMgmt] = useState(false);
+  const [showAuditLog,   setShowAuditLog]   = useState(false);
   const roleMenuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -939,6 +1106,13 @@ export default function DashboardPage() {
                                  text-ink-300 hover:text-white hover:bg-ink-800 transition-colors"
                     >
                       <Users className="w-4 h-4" /> Gestión de roles
+                    </button>
+                    <button
+                      onClick={() => { setShowAuditLog(true); setShowRoleMenu(false); }}
+                      className="flex items-center gap-2.5 w-full px-4 py-2.5 text-sm
+                                 text-ink-300 hover:text-white hover:bg-ink-800 transition-colors"
+                    >
+                      <ClipboardList className="w-4 h-4" /> Registro de actividad
                     </button>
                   </>
                 )}
@@ -1045,7 +1219,6 @@ export default function DashboardPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
           <div className="w-full max-w-2xl bg-ink-900 border border-ink-700 rounded-2xl shadow-2xl flex flex-col"
                style={{ maxHeight: "80vh" }}>
-            {/* Modal header */}
             <div className="flex items-center justify-between px-6 py-4 border-b border-ink-800 shrink-0">
               <div>
                 <h3 className="text-white font-bold text-lg">Gestión de roles</h3>
@@ -1058,9 +1231,34 @@ export default function DashboardPage() {
                 <X className="w-4 h-4" />
               </button>
             </div>
-            {/* Scrollable content */}
             <div className="overflow-y-auto p-5">
               <UserManagement />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Audit log modal (admin only) */}
+      {showAuditLog && isAdmin && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
+          <div className="w-full max-w-3xl bg-ink-900 border border-ink-700 rounded-2xl shadow-2xl flex flex-col"
+               style={{ maxHeight: "85vh" }}>
+            <div className="flex items-center justify-between px-6 py-4 border-b border-ink-800 shrink-0">
+              <div>
+                <h3 className="text-white font-bold text-lg flex items-center gap-2">
+                  <ClipboardList className="w-5 h-5 text-yellow-400" /> Registro de actividad
+                </h3>
+                <p className="text-ink-500 text-xs mt-0.5">Todas las acciones realizadas por organizadores y admins</p>
+              </div>
+              <button
+                onClick={() => setShowAuditLog(false)}
+                className="p-1.5 text-ink-500 hover:text-white rounded-lg hover:bg-ink-800 transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="overflow-y-auto p-5">
+              <AuditLogPanel />
             </div>
           </div>
         </div>
