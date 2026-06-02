@@ -484,7 +484,7 @@ export const resetPassword = async (req: Request, res: Response, next: NextFunct
   try {
     const { token, password } = z.object({
       token:    z.string().min(1),
-      password: z.string().min(6, "La contraseña debe tener al menos 6 caracteres"),
+      password: z.string().min(8, "La contraseña debe tener al menos 8 caracteres"),
     }).parse(req.body);
 
     const user = await prisma.user.findUnique({ where: { pwResetToken: token } });

@@ -41,7 +41,7 @@ export default function tournamentRoutes(io: SocketServer): Router {
   router.patch("/:id/inscriptions/:participantId", authenticate, resolveInscription);
 
   // Participants
-  router.get("/:id/participants", listParticipants);
+  router.get("/:id/participants", authenticate, listParticipants);
   router.post("/:id/participants", authenticate, addParticipant);
   router.post("/:id/participants/group", authenticate, addGroupParticipant);
   router.post("/:id/blind-pair", authenticate, blindPair);

@@ -196,7 +196,7 @@ export const updateTournament = async (req: AuthRequest, res: Response, next: Ne
   try {
     const tournament = await prisma.tournament.findUnique({ where: { id: req.params.id } });
     if (!tournament) return next(notFound("Tournament"));
-    if (tournament.createdById !== req.user!.userId && req.user!.role !== "admin" && req.user!.role !== "organizer") {
+    if (tournament.createdById !== req.user!.userId && req.user!.role !== "admin") {
       return next(forbidden());
     }
     if (tournament.status === "in_progress" || tournament.status === "completed") {
@@ -246,7 +246,7 @@ export const recalculateMetrics = async (req: AuthRequest, res: Response, next: 
       include: { levels: { orderBy: { order: "asc" } } },
     });
     if (!tournament) return next(notFound("Tournament"));
-    if (tournament.createdById !== req.user!.userId && req.user!.role !== "admin" && req.user!.role !== "organizer") {
+    if (tournament.createdById !== req.user!.userId && req.user!.role !== "admin") {
       return next(forbidden());
     }
     if (!tournament.metric) {
@@ -266,7 +266,7 @@ export const deleteTournament = async (req: AuthRequest, res: Response, next: Ne
   try {
     const tournament = await prisma.tournament.findUnique({ where: { id: req.params.id } });
     if (!tournament) return next(notFound("Tournament"));
-    if (tournament.createdById !== req.user!.userId && req.user!.role !== "admin" && req.user!.role !== "organizer") {
+    if (tournament.createdById !== req.user!.userId && req.user!.role !== "admin") {
       return next(forbidden());
     }
     audit({ req, action: "tournament.delete", entityType: "tournament", entityId: tournament.id, entityName: tournament.name });
@@ -390,7 +390,7 @@ export const startTournament = async (req: AuthRequest, res: Response, next: Nex
       },
     });
     if (!tournament) return next(notFound("Tournament"));
-    if (tournament.createdById !== req.user!.userId && req.user!.role !== "admin" && req.user!.role !== "organizer") {
+    if (tournament.createdById !== req.user!.userId && req.user!.role !== "admin") {
       return next(forbidden());
     }
     if (tournament.status !== "registration") {
@@ -564,7 +564,7 @@ export const startLevel = async (req: AuthRequest, res: Response, next: NextFunc
       include: { participants: true, levels: { orderBy: { order: "asc" } } },
     });
     if (!tournament) return next(notFound("Tournament"));
-    if (tournament.createdById !== req.user!.userId && req.user!.role !== "admin" && req.user!.role !== "organizer") {
+    if (tournament.createdById !== req.user!.userId && req.user!.role !== "admin") {
       return next(forbidden());
     }
     if (tournament.status !== "registration") {
@@ -645,7 +645,7 @@ export const finalizeTournament = async (req: AuthRequest, res: Response, next: 
       include: { matches: true },
     });
     if (!tournament) return next(notFound("Tournament"));
-    if (tournament.createdById !== req.user!.userId && req.user!.role !== "admin" && req.user!.role !== "organizer") {
+    if (tournament.createdById !== req.user!.userId && req.user!.role !== "admin") {
       return next(forbidden());
     }
     if (tournament.status !== "in_progress") {
@@ -674,7 +674,7 @@ export const resetTournament = async (req: AuthRequest, res: Response, next: Nex
   try {
     const tournament = await prisma.tournament.findUnique({ where: { id: req.params.id } });
     if (!tournament) return next(notFound("Tournament"));
-    if (tournament.createdById !== req.user!.userId && req.user!.role !== "admin" && req.user!.role !== "organizer") {
+    if (tournament.createdById !== req.user!.userId && req.user!.role !== "admin") {
       return next(forbidden());
     }
     if (tournament.status !== "in_progress" && tournament.status !== "registration") {
@@ -712,7 +712,7 @@ export const resetLevel = async (req: AuthRequest, res: Response, next: NextFunc
       },
     });
     if (!tournament) return next(notFound("Tournament"));
-    if (tournament.createdById !== req.user!.userId && req.user!.role !== "admin" && req.user!.role !== "organizer") {
+    if (tournament.createdById !== req.user!.userId && req.user!.role !== "admin") {
       return next(forbidden());
     }
 
@@ -795,7 +795,7 @@ export const openRegistration = async (req: AuthRequest, res: Response, next: Ne
   try {
     const tournament = await prisma.tournament.findUnique({ where: { id: req.params.id } });
     if (!tournament) return next(notFound("Tournament"));
-    if (tournament.createdById !== req.user!.userId && req.user!.role !== "admin" && req.user!.role !== "organizer") {
+    if (tournament.createdById !== req.user!.userId && req.user!.role !== "admin") {
       return next(forbidden());
     }
     if (tournament.status !== "draft") {
@@ -898,7 +898,7 @@ export const approveGroup = async (req: AuthRequest, res: Response, next: NextFu
 
     const tournament = await prisma.tournament.findUnique({ where: { id: req.params.id } });
     if (!tournament) return next(notFound("Tournament"));
-    if (tournament.createdById !== req.user!.userId && req.user!.role !== "admin" && req.user!.role !== "organizer") {
+    if (tournament.createdById !== req.user!.userId && req.user!.role !== "admin") {
       return next(forbidden());
     }
 
@@ -930,7 +930,7 @@ export const resetKO = async (req: AuthRequest, res: Response, next: NextFunctio
 
     const tournament = await prisma.tournament.findUnique({ where: { id: req.params.id } });
     if (!tournament) return next(notFound("Tournament"));
-    if (tournament.createdById !== req.user!.userId && req.user!.role !== "admin" && req.user!.role !== "organizer") {
+    if (tournament.createdById !== req.user!.userId && req.user!.role !== "admin") {
       return next(forbidden());
     }
 
@@ -957,7 +957,7 @@ export const launchKO = async (req: AuthRequest, res: Response, next: NextFuncti
 
     const tournament = await prisma.tournament.findUnique({ where: { id: req.params.id } });
     if (!tournament) return next(notFound("Tournament"));
-    if (tournament.createdById !== req.user!.userId && req.user!.role !== "admin" && req.user!.role !== "organizer") {
+    if (tournament.createdById !== req.user!.userId && req.user!.role !== "admin") {
       return next(forbidden());
     }
 
@@ -1081,7 +1081,7 @@ export const createTiebreakerMatch = async (req: AuthRequest, res: Response, nex
 
     const tournament = await prisma.tournament.findUnique({ where: { id: req.params.id } });
     if (!tournament) return next(notFound("Tournament"));
-    if (tournament.createdById !== req.user!.userId && req.user!.role !== "admin" && req.user!.role !== "organizer") {
+    if (tournament.createdById !== req.user!.userId && req.user!.role !== "admin") {
       return next(forbidden());
     }
 
@@ -1160,7 +1160,7 @@ export const reportTiebreakerResult = async (req: AuthRequest, res: Response, ne
 
     const tournament = await prisma.tournament.findUnique({ where: { id: req.params.id } });
     if (!tournament) return next(notFound("Tournament"));
-    if (tournament.createdById !== req.user!.userId && req.user!.role !== "admin" && req.user!.role !== "organizer") {
+    if (tournament.createdById !== req.user!.userId && req.user!.role !== "admin") {
       return next(forbidden());
     }
 
@@ -1198,7 +1198,7 @@ export const unapproveGroup = async (req: AuthRequest, res: Response, next: Next
 
     const tournament = await prisma.tournament.findUnique({ where: { id: req.params.id } });
     if (!tournament) return next(notFound("Tournament"));
-    if (tournament.createdById !== req.user!.userId && req.user!.role !== "admin" && req.user!.role !== "organizer") {
+    if (tournament.createdById !== req.user!.userId && req.user!.role !== "admin") {
       return next(forbidden());
     }
 
@@ -1224,7 +1224,7 @@ export const resetRRGroup = async (req: AuthRequest, res: Response, next: NextFu
 
     const tournament = await prisma.tournament.findUnique({ where: { id: req.params.id } });
     if (!tournament) return next(notFound("Tournament"));
-    if (tournament.createdById !== req.user!.userId && req.user!.role !== "admin" && req.user!.role !== "organizer") {
+    if (tournament.createdById !== req.user!.userId && req.user!.role !== "admin") {
       return next(forbidden());
     }
     if (tournament.format !== "round_robin") {
@@ -1285,7 +1285,7 @@ export const uploadTournamentImage = async (req: AuthRequest, res: Response, nex
   try {
     const tournament = await prisma.tournament.findUnique({ where: { id: req.params.id } });
     if (!tournament) return next(notFound("Torneo"));
-    if (tournament.createdById !== req.user!.userId && req.user!.role !== "admin" && req.user!.role !== "organizer") return next(forbidden());
+    if (tournament.createdById !== req.user!.userId && req.user!.role !== "admin") return next(forbidden());
 
     const file = req.file as Express.Multer.File | undefined;
     if (!file) return next(badRequest("No se ha proporcionado ninguna imagen"));
@@ -1480,7 +1480,7 @@ export const removeTournamentImage = async (req: AuthRequest, res: Response, nex
   try {
     const tournament = await prisma.tournament.findUnique({ where: { id: req.params.id } });
     if (!tournament) return next(notFound("Torneo"));
-    if (tournament.createdById !== req.user!.userId && req.user!.role !== "admin" && req.user!.role !== "organizer") return next(forbidden());
+    if (tournament.createdById !== req.user!.userId && req.user!.role !== "admin") return next(forbidden());
 
     if (tournament.imageUrl) {
       safeUnlink(tournament.imageUrl);

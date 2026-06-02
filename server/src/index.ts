@@ -82,6 +82,7 @@ app.use("/api/v1/auth/check-phone",           enumerationLimiter);
 app.use("/api/v1/auth/check-dni",             enumerationLimiter); // 20/15min — prevents DNI enumeration
 app.use("/api/v1/auth/request-verification",  emailSendLimiter);   // 3/15min — prevents email spam
 app.use("/api/v1/auth/resend-verification",   emailSendLimiter);   // 3/15min — same protection authenticated
+app.use("/api/v1/auth/forgot-password",       emailSendLimiter);   // 3/15min — prevents email spam / cost abuse
 app.use("/api/v1/auth/login",                 authLimiter);        // 30/15min — brute-force on login
 app.use("/api/v1/auth/register",              authLimiter);        // 30/15min — brute-force on register
 app.use("/api/v1",      apiLimiter);

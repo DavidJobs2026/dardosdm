@@ -8,7 +8,9 @@ const nextConfig: NextConfig = {
   transpilePackages: ["@tournament/types"],
   images: {
     remotePatterns: [
-      { protocol: "https", hostname: "**" },
+      // Production API on Railway — allows any subdomain of railway.app
+      { protocol: "https", hostname: "**.railway.app" },
+      // Local development API
       { protocol: "http",  hostname: "localhost", port: "4000" },
     ],
   },

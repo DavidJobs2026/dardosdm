@@ -11,6 +11,9 @@ import { audit } from "../lib/audit";
 /** GET /users/search?q=...&tournamentId=... */
 export const searchUsers = async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
+    // Players must not search for other users — prevents PII enumeration
+    if (req.user!.role === "player") return next(forbidden());
+
     const q = String(req.query.q || "").trim();
     const tournamentId = req.query.tournamentId ? String(req.query.tournamentId) : null;
 
