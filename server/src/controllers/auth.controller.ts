@@ -168,7 +168,7 @@ export const register = async (req: Request, res: Response, next: NextFunction) 
 
     // Send welcome + verification email (non-blocking)
     if (isPlayer && emailVerifyToken) {
-      const clientUrl = process.env.CLIENT_URL || "http://localhost:3000";
+      const clientUrl = process.env.CLIENT_URL ?? "https://torneos.dardosdm.com";
       const verifyUrl = `${clientUrl}/verificar-email?token=${emailVerifyToken}`;
       sendWelcomeVerification({ to: email, name, verifyUrl }).catch(err =>
         console.error("[email] Failed to send welcome email:", err)
@@ -263,7 +263,7 @@ export const requestVerification = async (req: Request, res: Response, next: Nex
       data: { emailVerifyToken, emailVerifyExpires },
     });
 
-    const clientUrl = process.env.CLIENT_URL || "http://localhost:3000";
+    const clientUrl = process.env.CLIENT_URL ?? "https://torneos.dardosdm.com";
     const verifyUrl = `${clientUrl}/verificar-email?token=${emailVerifyToken}`;
     await sendWelcomeVerification({ to: user.email, name: user.name, verifyUrl });
 
@@ -290,7 +290,7 @@ export const resendVerification = async (req: Request, res: Response, next: Next
       data: { emailVerifyToken, emailVerifyExpires },
     });
 
-    const clientUrl = process.env.CLIENT_URL || "http://localhost:3000";
+    const clientUrl = process.env.CLIENT_URL ?? "https://torneos.dardosdm.com";
     const verifyUrl = `${clientUrl}/verificar-email?token=${emailVerifyToken}`;
     await sendWelcomeVerification({ to: user.email, name: user.name, verifyUrl });
 

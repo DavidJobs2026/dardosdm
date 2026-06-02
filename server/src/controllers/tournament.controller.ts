@@ -1339,7 +1339,7 @@ export const playerInscribe = async (req: AuthRequest, res: Response, next: Next
     });
 
     // Send inscription-pending email (non-blocking)
-    const clientUrl = process.env.CLIENT_URL ?? "http://localhost:3000";
+    const clientUrl = process.env.CLIENT_URL ?? "https://torneos.dardosdm.com";
     prisma.user.findUnique({ where: { id: req.user!.userId }, select: { name: true, email: true } })
       .then(user => {
         if (!user) return;
@@ -1451,7 +1451,7 @@ export const resolveInscription = async (req: AuthRequest, res: Response, next: 
 
     // Send inscription-approved email (non-blocking)
     if (updated.user) {
-      const clientUrl = process.env.CLIENT_URL ?? "http://localhost:3000";
+      const clientUrl = process.env.CLIENT_URL ?? "https://torneos.dardosdm.com";
       const tournamentId = req.params.id;
       prisma.tournament.findUnique({
         where: { id: tournamentId },
