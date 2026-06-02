@@ -831,7 +831,7 @@ function EditPlayerModal({ player, onClose, onSaved }: {
 // ─── Absorb ghost preview modal ───────────────────────────────────────────────
 interface GhostParticipant {
   id: string;
-  finalPosition: number | null;
+  finalRank: number | null;
   registeredAt: string;
   conflict: boolean;
   tournament: { id: string; name: string; status: string; startDate: string | null };
@@ -1022,8 +1022,8 @@ function AbsorbGhostModal({
                           gp.conflict ? "bg-amber-500" : "bg-green-500"
                         )} />
                         <span className="flex-1 text-ink-300 truncate">{gp.tournament.name}</span>
-                        {gp.finalPosition && (
-                          <span className="text-ink-500 shrink-0">#{gp.finalPosition}</span>
+                        {gp.finalRank && (
+                          <span className="text-ink-500 shrink-0">#{gp.finalRank}</span>
                         )}
                         <span className="text-ink-600 shrink-0">{fmtDate(gp.tournament.startDate)}</span>
                         {gp.conflict && (

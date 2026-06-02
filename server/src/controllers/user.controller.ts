@@ -542,48 +542,49 @@ export const ghostPreview = async (req: AuthRequest, res: Response, next: NextFu
     if (!realUser.dni) return next(badRequest("El jugador no tiene DNI. Añádelo primero."));
 
     const slug  = realUser.dni.toLowerCase().replace(/[^a-z0-9]/g, "");
-    const ghost = await prisma.user.findUnique({
-      where: { email: `${slug}@torneo.local` },
-      select: {
-        id:        true,
-        name:      true,
-        email:     true,
-        elo:       true,
-        createdAt: true,
-        participants: {
-          select: {
-            id:            true,
-            finalPosition: true,
-            registeredAt:  true,
-            tournament: { select: { id: true, name: true, status: true, startDate: true } },
-          },
-          orderBy: { registeredAt: "desc" },
-        },
-      },
+    const ghostUser = await prisma.user.findUnique({
+      where:  { email: `${slug}@torneo.local` },
+      select: { id: true, name: true, email: true, elo: true, createdAt: true },
     });
 
-    if (!ghost) {
+    if (!ghostUser) {
       return res.json({ data: { ghost: null } });
     }
 
+    // Load ghost's tournament participations separately to avoid TS inference issues
+    const ghostParts = await prisma.participant.findMany({
+      where:   { userId: ghostUser.id },
+      select: {
+        id:          true,
+        finalRank:   true,
+        registeredAt: true,
+        tournamentId: true,
+        tournament:  { select: { id: true, name: true, status: true, startDate: true } },
+      },
+      orderBy: { registeredAt: "desc" },
+    });
+
     // Detect conflicts: tournaments where the real user is already registered
-    const realPartTournIds = new Set(
+    const realTournIds = new Set(
       (await prisma.participant.findMany({
         where:  { userId: realUser.id },
         select: { tournamentId: true },
-      })).map((p: { tournamentId: string }) => p.tournamentId)
+      })).map(p => p.tournamentId)
     );
 
-    const ghostParticipants = ghost.participants.map((gp: typeof ghost.participants[number]) => ({
-      ...gp,
-      conflict: realPartTournIds.has(gp.tournament.id),
+    const participants = ghostParts.map(gp => ({
+      id:           gp.id,
+      finalRank:    gp.finalRank,
+      registeredAt: gp.registeredAt,
+      tournament:   gp.tournament,
+      conflict:     realTournIds.has(gp.tournamentId),
     }));
 
     return res.json({
       data: {
-        ghost: { ...ghost, participants: ghostParticipants },
-        transferCount:  ghostParticipants.filter(gp => !gp.conflict).length,
-        conflictCount:  ghostParticipants.filter(gp =>  gp.conflict).length,
+        ghost: { ...ghostUser, participants },
+        transferCount: participants.filter(p => !p.conflict).length,
+        conflictCount: participants.filter(p =>  p.conflict).length,
       },
     });
   } catch (err) { next(err); }
