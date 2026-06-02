@@ -37,15 +37,15 @@ app.use(express.json({ limit: "2mb" }));
 app.use(express.urlencoded({ extended: true, limit: "2mb" }));
 // Strict limiter for auth endpoints (brute-force protection on login/register).
 // Explicitly skips /refresh — that endpoint has its own generous limiter above.
-// When mounted as app.use("/api/v1/auth", ...), req.path is already stripped
-// of the /api/v1/auth prefix, so we compare against "/refresh".
+// Uses req.originalUrl (full URL, never stripped by Express prefix mounting) so
+// the check is reliable regardless of where this middleware is applied.
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 min
   max: 30,
   message: "Demasiados intentos, espera un momento",
   standardHeaders: true,
   legacyHeaders: false,
-  skip: (req) => req.path === "/refresh",
+  skip: (req) => req.originalUrl.includes("/auth/refresh"),
 });
 // Tight limiter for check-email / check-phone — prevents bulk user enumeration
 const enumerationLimiter = rateLimit({
