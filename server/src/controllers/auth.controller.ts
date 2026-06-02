@@ -23,18 +23,25 @@ function extractUserAgent(req: Request): string | null {
 const COOKIE_NAME = "refreshToken";
 const COOKIE_MAX_AGE = 7 * 24 * 60 * 60 * 1000; // 7 days in ms
 
+const IS_PROD = process.env.NODE_ENV === "production";
+
 function setRefreshCookie(res: Response, token: string) {
   res.cookie(COOKIE_NAME, token, {
-    httpOnly:  true,                                  // not accessible from JS
-    secure:    process.env.NODE_ENV === "production", // HTTPS only in prod
-    sameSite:  "strict",                              // no CSRF
-    maxAge:    COOKIE_MAX_AGE,
-    path:      "/api/v1/auth",                        // only sent to auth routes
+    httpOnly: true,           // not accessible from JS
+    secure:   IS_PROD,        // HTTPS only in prod
+    // In production the frontend (dardosdm.com) and backend (railway.app) are on
+    // different registrable domains, so "strict" silently blocks the cookie on
+    // every cross-site fetch.  "none" + secure allows cross-origin credentials
+    // while the CORS allowlist + httpOnly + path restriction maintain security.
+    // In development (same-origin localhost) "lax" is enough.
+    sameSite: IS_PROD ? "none" : "lax",
+    maxAge:   COOKIE_MAX_AGE,
+    path:     "/api/v1/auth", // only sent to auth routes
   });
 }
 
 function clearRefreshCookie(res: Response) {
-  res.clearCookie(COOKIE_NAME, { path: "/api/v1/auth" });
+  res.clearCookie(COOKIE_NAME, { path: "/api/v1/auth", secure: IS_PROD, sameSite: IS_PROD ? "none" : "lax" });
 }
 
 const registerSchema = z.object({
