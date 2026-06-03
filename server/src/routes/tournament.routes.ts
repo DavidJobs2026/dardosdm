@@ -61,7 +61,7 @@ export default function tournamentRoutes(io: SocketServer): Router {
   router.post("/:id/repair-bracket", authenticate, repairBracket);
 
   // Dianas
-  router.get("/:id/dianas", listDianas);
+  router.get("/:id/dianas", authenticate, listDianas);
   router.post("/:id/dianas/setup", authenticate, setupDianas);
   router.put("/:id/dianas/layout", authenticate, saveLayout);
   router.post("/:id/dianas/bulk-delete", authenticate, bulkDeleteDianas);
@@ -73,7 +73,7 @@ export default function tournamentRoutes(io: SocketServer): Router {
   router.post("/:id/matches/:matchId/no-show", authenticate, noShowMatch(io));
 
   // Round Robin
-  router.get("/:id/rr-standings", getRRStandings);
+  router.get("/:id/rr-standings", authenticate, getRRStandings);
   router.post("/:id/approve-group", authenticate, approveGroup);
   router.post("/:id/unapprove-group", authenticate, unapproveGroup);
   router.post("/:id/launch-ko", authenticate, launchKO);

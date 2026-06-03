@@ -78,8 +78,10 @@ export const listTournaments = async (req: AuthRequest, res: Response, next: Nex
     const VALID_STATUSES = ["draft", "registration", "in_progress", "completed", "cancelled"];
     const VALID_FORMATS  = ["single_elimination", "double_elimination", "round_robin"];
 
-    // Players only see published tournaments; organizers/admins see everything
-    const isPlayer = req.user?.role === "player";
+    // Only organizers and admins see everything; everyone else (players + unauthenticated) sees only public
+    // VULN-022 fix: unauthenticated requests had req.user===undefined → isPlayer was false → all tournaments visible
+    const isPrivileged = req.user?.role === "organizer" || req.user?.role === "admin";
+    const isPlayer = !isPrivileged; // treat unauthenticated as "player" for filtering
 
     const buildWhere = (withPublic: boolean) => ({
       ...(withPublic && isPlayer ? { isPublic: true } : {}),
@@ -144,9 +146,12 @@ export const getTournament = async (req: AuthRequest, res: Response, next: NextF
     });
     if (!tournament) return next(notFound("Tournament"));
 
-    // Players can only view published tournaments via direct URL
-    // (isPublic may be null/undefined if the DB migration hasn't run yet — treat as public)
-    if (req.user?.role === "player" && tournament.isPublic === false) {
+    // Non-organizer / unauthenticated users can only see published tournaments.
+    // VULN-022 fix: unauthenticated requests had req.user === undefined so
+    // req.user?.role === "player" was false → private tournaments were visible.
+    // Now we check: if the caller is NOT an organizer or admin, block private tournaments.
+    const isPrivileged = req.user?.role === "organizer" || req.user?.role === "admin";
+    if (!isPrivileged && tournament.isPublic === false) {
       return next(notFound("Tournament"));
     }
 
