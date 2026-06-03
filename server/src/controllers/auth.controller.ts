@@ -23,7 +23,12 @@ function extractUserAgent(req: Request): string | null {
 const COOKIE_NAME = "refreshToken";
 const COOKIE_MAX_AGE = 30 * 24 * 60 * 60 * 1000; // 30 days in ms (matches REFRESH_EXPIRES)
 
-const IS_PROD = process.env.NODE_ENV === "production";
+// Use CLIENT_URL as the production signal — more reliable than NODE_ENV on Railway,
+// which may not set NODE_ENV even though the server is running behind HTTPS.
+// If CLIENT_URL points to an https:// domain we're definitely in production.
+const IS_PROD =
+  process.env.NODE_ENV === "production" ||
+  (process.env.CLIENT_URL?.startsWith("https://") ?? false);
 
 function setRefreshCookie(res: Response, token: string) {
   res.cookie(COOKIE_NAME, token, {

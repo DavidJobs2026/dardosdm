@@ -103,12 +103,12 @@ export const useAuthStore = create<AuthState>()(
       },
 
       initAuth: async () => {
-        // Called once on app mount. If we have a user in persisted state but no
-        // in-memory token (e.g. after a page refresh), silently call /refresh.
-        // The httpOnly cookie is sent automatically — no token needed in the request.
+        // Called once on app mount. Silently exchanges the httpOnly refresh
+        // cookie for a fresh access token. Two separate try/catch blocks so
+        // a transient /auth/me error never logs the user out when the refresh
+        // itself succeeded.
 
-        // If a valid in-memory token already exists (same tab re-rendering),
-        // skip the refresh and just re-fetch user data.
+        // Fast path: in-memory token still alive (same-tab re-render)
         const existing = getAccessToken();
         if (existing) {
           try {
@@ -118,19 +118,26 @@ export const useAuthStore = create<AuthState>()(
           } catch { /* token expired — fall through to refresh */ }
         }
 
+        // ── Step 1: exchange cookie for a new access token ──────────────────
+        let accessToken: string;
         try {
-          // refreshAccessToken deduplicates concurrent calls (multi-tab race protection)
           const { data } = await api.post("/auth/refresh", {});
-          const { accessToken } = data.data.tokens;
+          accessToken = data.data.tokens.accessToken;
           setAccessToken(accessToken);
           set({ accessToken });
-          // Fetch fresh user data after token renewal
+        } catch {
+          // No valid cookie → not logged in
+          setAccessToken(null);
+          set({ user: null, accessToken: null });
+          return;
+        }
+
+        // ── Step 2: fetch user data (best-effort, don't log out on failure) ──
+        try {
           const me = await api.get("/auth/me");
           set({ user: me.data.data });
         } catch {
-          // No valid cookie → user is not logged in
-          setAccessToken(null);
-          set({ user: null, accessToken: null });
+          // Keep the token alive; UI will retry on next interaction
         }
       },
     }),
