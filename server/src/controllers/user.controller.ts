@@ -7,6 +7,7 @@ import bcrypt from "bcryptjs";
 import { badRequest, forbidden, notFound } from "../utils/errors";
 import { Prisma } from "@prisma/client";
 import { audit } from "../lib/audit";
+import { sendRoleChangedAlert } from "../lib/email";
 
 /** GET /users/search?q=...&tournamentId=... */
 export const searchUsers = async (req: AuthRequest, res: Response, next: NextFunction) => {
@@ -420,13 +421,30 @@ export const updateUserRole = async (req: AuthRequest, res: Response, next: Next
       role: z.enum(["admin", "organizer", "player"]),
     }).parse(req.body);
 
-    const target = await prisma.user.findUnique({ where: { id: req.params.id }, select: { role: true, name: true } });
+    const target = await prisma.user.findUnique({ where: { id: req.params.id }, select: { role: true, name: true, email: true } });
     const updated = await prisma.user.update({
       where: { id: req.params.id },
       data: { role },
       select: { id: true, name: true, email: true, role: true },
     });
     audit({ req, action: "user.role_change", entityType: "user", entityId: updated.id, entityName: updated.name, details: { from: target?.role, to: role } });
+
+    // Alert all admins about the role change (fire-and-forget)
+    const actor = await prisma.user.findUnique({ where: { id: req.user!.userId }, select: { name: true } });
+    const admins = await prisma.user.findMany({ where: { role: "admin" }, select: { email: true } });
+    const ip = (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() || req.socket?.remoteAddress;
+    admins.forEach(a => {
+      sendRoleChangedAlert({
+        adminEmail: a.email,
+        actorName:  actor?.name ?? "Desconocido",
+        targetName: updated.name,
+        targetEmail: updated.email,
+        fromRole:   target?.role ?? "?",
+        toRole:     role,
+        ip,
+      }).catch(() => {});
+    });
+
     return res.json({ data: updated, message: "Rol actualizado" });
   } catch (err) { next(err); }
 };

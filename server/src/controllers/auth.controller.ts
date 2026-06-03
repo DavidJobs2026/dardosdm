@@ -6,7 +6,7 @@ import { prisma } from "../lib/prisma";
 import { signAccessToken, signRefreshToken, verifyRefreshToken } from "../utils/jwt";
 import { badRequest, unauthorized, notFound } from "../utils/errors";
 import { AuthRequest } from "../middlewares/auth.middleware";
-import { sendWelcomeVerification, sendPasswordReset } from "../lib/email";
+import { sendWelcomeVerification, sendPasswordReset, sendPasswordChangedAlert } from "../lib/email";
 
 // ─── Request fingerprint helpers ─────────────────────────────────────────────
 // We bind each refresh token to the User-Agent so a stolen cookie can't be
@@ -518,7 +518,7 @@ export const resetPassword = async (req: Request, res: Response, next: NextFunct
 
     const passwordHash = await bcrypt.hash(password, 12);
 
-    // Update password and clear reset token; also invalidate all refresh tokens
+    // Update password, clear reset token, invalidate ALL active sessions
     await prisma.$transaction([
       prisma.user.update({
         where: { id: user.id },
@@ -526,6 +526,10 @@ export const resetPassword = async (req: Request, res: Response, next: NextFunct
       }),
       prisma.refreshToken.deleteMany({ where: { userId: user.id } }),
     ]);
+
+    // Alert the account owner that their password was changed (non-blocking)
+    const ip = (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() || req.socket?.remoteAddress;
+    sendPasswordChangedAlert({ to: user.email, name: user.name, ip }).catch(() => {});
 
     return res.json({ message: "Contraseña actualizada correctamente" });
   } catch (err) {

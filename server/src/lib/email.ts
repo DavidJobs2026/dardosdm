@@ -416,3 +416,77 @@ export async function sendInscriptionApproved(opts: {
 
   await sendEmail(to, `✅ Inscripción confirmada en ${safeTournament}`, html, text);
 }
+
+// ─── Security alert: password was reset ──────────────────────────────────────
+export async function sendPasswordChangedAlert(opts: {
+  to: string;
+  name: string;
+  ip?: string | null;
+}) {
+  const { to, name, ip } = opts;
+  const firstName = esc(name.split(" ")[0]);
+  const time = new Date().toLocaleString("es-ES", { timeZone: "Europe/Madrid" });
+
+  const html = emailShell(`
+    <h2 style="margin:0 0 8px;color:#fff;font-size:20px;font-weight:700;">
+      ⚠️ Tu contraseña ha sido cambiada
+    </h2>
+    <p style="margin:0 0 16px;color:#a1a1aa;font-size:14px;line-height:1.7;">
+      Hola <strong style="color:#e4e4e7;">${firstName}</strong>, la contraseña de tu cuenta en
+      <strong style="color:#e4e4e7;">DardosDM</strong> acaba de ser restablecida.
+    </p>
+    <div style="background:#1a0a0a;border:1px solid #7f1d1d50;border-radius:10px;padding:14px 18px;margin-bottom:20px;">
+      <p style="margin:0 0 4px;color:#fca5a5;font-size:13px;font-weight:700;">📅 Fecha y hora</p>
+      <p style="margin:0;color:#a1a1aa;font-size:12px;">${time}</p>
+      ${ip ? `<p style="margin:6px 0 0;color:#a1a1aa;font-size:12px;">🌐 IP: <strong style="color:#e4e4e7;">${esc(ip)}</strong></p>` : ""}
+    </div>
+    <p style="margin:0 0 20px;color:#f87171;font-size:13px;font-weight:600;">
+      Si NO fuiste tú, alguien tiene acceso a tu cuenta. Contacta con el administrador inmediatamente.
+    </p>
+    <p style="margin:0;color:#71717a;font-size:12px;text-align:center;">
+      Si fuiste tú quien cambió la contraseña, puedes ignorar este mensaje.
+    </p>
+  `);
+
+  const text = `Tu contraseña de DardosDM fue cambiada el ${time}${ip ? ` desde IP ${ip}` : ""}. Si no fuiste tú, contacta con el administrador inmediatamente.`;
+  await sendEmail(to, `⚠️ Tu contraseña ha sido cambiada — DardosDM`, html, text);
+}
+
+// ─── Security alert: role was changed (sent to admin) ────────────────────────
+export async function sendRoleChangedAlert(opts: {
+  adminEmail: string;
+  actorName:  string;
+  targetName: string;
+  targetEmail: string;
+  fromRole:   string;
+  toRole:     string;
+  ip?: string | null;
+}) {
+  const { adminEmail, actorName, targetName, targetEmail, fromRole, toRole, ip } = opts;
+  const time = new Date().toLocaleString("es-ES", { timeZone: "Europe/Madrid" });
+
+  const html = emailShell(`
+    <h2 style="margin:0 0 8px;color:#fff;font-size:20px;font-weight:700;">
+      🔐 Cambio de rol detectado
+    </h2>
+    <p style="margin:0 0 16px;color:#a1a1aa;font-size:14px;line-height:1.7;">
+      Se ha realizado un cambio de rol en DardosDM. Revísalo si no lo reconoces.
+    </p>
+    <div style="background:#09090b;border:1px solid #27272a;border-radius:12px;padding:16px;margin-bottom:20px;font-size:13px;">
+      <p style="margin:0 0 6px;color:#71717a;">👤 <strong style="color:#e4e4e7;">Ejecutado por:</strong> ${esc(actorName)}</p>
+      <p style="margin:0 0 6px;color:#71717a;">🎯 <strong style="color:#e4e4e7;">Usuario afectado:</strong> ${esc(targetName)} (${esc(targetEmail)})</p>
+      <p style="margin:0 0 6px;color:#71717a;">🔄 <strong style="color:#e4e4e7;">Cambio:</strong>
+        <span style="color:#f87171;">${esc(fromRole)}</span> →
+        <span style="color:#4ade80;">${esc(toRole)}</span>
+      </p>
+      <p style="margin:0 0 4px;color:#71717a;">📅 <strong style="color:#e4e4e7;">Hora:</strong> ${time}</p>
+      ${ip ? `<p style="margin:0;color:#71717a;">🌐 <strong style="color:#e4e4e7;">IP:</strong> ${esc(ip)}</p>` : ""}
+    </div>
+    <p style="margin:0;color:#71717a;font-size:12px;text-align:center;">
+      Si reconoces esta acción, ignora este mensaje. Si no, revisa el acceso a tu cuenta.
+    </p>
+  `);
+
+  const text = `Cambio de rol en DardosDM: ${actorName} cambió el rol de ${targetName} de '${fromRole}' a '${toRole}' el ${time}${ip ? ` desde IP ${ip}` : ""}.`;
+  await sendEmail(adminEmail, `🔐 Cambio de rol detectado — DardosDM`, html, text);
+}
