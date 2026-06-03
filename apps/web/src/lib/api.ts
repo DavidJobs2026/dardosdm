@@ -23,7 +23,7 @@ api.interceptors.request.use((config) => {
 // with "token not found" and incorrectly log the user out).
 let _refreshPromise: Promise<string> | null = null;
 
-function refreshAccessToken(): Promise<string> {
+export function refreshAccessToken(): Promise<string> {
   if (_refreshPromise) return _refreshPromise;
 
   _refreshPromise = axios

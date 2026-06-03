@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { User } from "@tournament/types";
-import { api } from "@/lib/api";
+import { api, refreshAccessToken } from "@/lib/api";
 import { getAccessToken, setAccessToken } from "@/lib/token";
 
 interface PlayerExtra {
@@ -119,11 +119,12 @@ export const useAuthStore = create<AuthState>()(
         }
 
         // ── Step 1: exchange cookie for a new access token ──────────────────
+        // Use the shared refreshAccessToken() from api.ts so this call and any
+        // concurrent 401-interceptor refresh share the same promise — only ONE
+        // HTTP request is made, eliminating the delete-first race condition.
         let accessToken: string;
         try {
-          const { data } = await api.post("/auth/refresh", {});
-          accessToken = data.data.tokens.accessToken;
-          setAccessToken(accessToken);
+          accessToken = await refreshAccessToken();
           set({ accessToken });
         } catch {
           // No valid cookie → not logged in
