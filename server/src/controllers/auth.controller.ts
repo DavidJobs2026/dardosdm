@@ -74,7 +74,8 @@ const registerSchema = z.object({
                      .or(z.literal("")),
   province:        z.string().optional(),
   birthDate:       z.string().optional(),
-  gdprConsent:     z.boolean().optional().default(false),
+  // GDPR consent is MANDATORY — reject registration if not explicitly accepted
+  gdprConsent:     z.literal(true, { errorMap: () => ({ message: "Debes aceptar la Política de Privacidad para registrarte" }) }),
   whatsappConsent: z.boolean().optional().default(false),
   emailConsent:    z.boolean().optional().default(false),
   ligaCard:        z.string().max(16).optional(),
