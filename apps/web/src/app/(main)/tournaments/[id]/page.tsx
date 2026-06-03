@@ -35,12 +35,6 @@ import { createPortal } from "react-dom";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function eloLevel(elo: number) {
-  if (elo >= 1600) return { label: "Elite",   color: "text-yellow-400", bg: "bg-yellow-400/10 border-yellow-400/30" };
-  if (elo >= 1400) return { label: "Pro",     color: "text-blue-400",   bg: "bg-blue-400/10 border-blue-400/30"   };
-  if (elo >= 1200) return { label: "Amateur", color: "text-green-400",  bg: "bg-green-400/10 border-green-400/30" };
-  return                   { label: "Rookie",  color: "text-ink-400",   bg: "bg-ink-800/60 border-ink-700"        };
-}
 
 /** Returns which TournamentLevel a participant belongs to based on their metricValue.
  *  Levels are checked highest-order first so an open-ended lower level (maxValue=null)

@@ -945,10 +945,6 @@ function AbsorbGhostModal({
                   </div>
                   <div className="space-y-1 text-xs">
                     <div className="flex justify-between">
-                      <span className="text-ink-500">ELO</span>
-                      <span className="text-ink-300 font-mono">{ghost.elo}</span>
-                    </div>
-                    <div className="flex justify-between">
                       <span className="text-ink-500">Torneos</span>
                       <span className="text-ink-300 font-mono">{ghost.participants.length}</span>
                     </div>

@@ -198,11 +198,6 @@ export const reportResult = (io: SocketServer) => async (req: AuthRequest, res: 
       }
     }
 
-    // Update ELO
-    if (winnerId && loserId) {
-      await updateElo(match.tournamentId, winnerId, loserId);
-    }
-
     // Free diana when match completes
     await prisma.diana.updateMany({ where: { matchId: match.id }, data: { matchId: null } });
 
@@ -275,39 +270,6 @@ async function sendMatchResultPush(
   await Promise.allSettled([
     sendPushToUser(p1.user.id, payload),
     sendPushToUser(p2.user.id, payload),
-  ]);
-}
-
-// ─── ELO Calculation ─────────────────────────────────────────────────────────
-
-async function updateElo(tournamentId: string, winnerId: string, loserId: string) {
-  const [winnerParticipant, loserParticipant] = await Promise.all([
-    prisma.participant.findUnique({ where: { id: winnerId }, include: { user: true } }),
-    prisma.participant.findUnique({ where: { id: loserId }, include: { user: true } }),
-  ]);
-
-  if (!winnerParticipant?.user || !loserParticipant?.user) return;
-
-  const K = 32;
-  const rW = winnerParticipant.user.elo;
-  const rL = loserParticipant.user.elo;
-
-  const expectedW = 1 / (1 + Math.pow(10, (rL - rW) / 400));
-  const eloChange = Math.round(K * (1 - expectedW));
-
-  await Promise.all([
-    prisma.user.update({ where: { id: winnerParticipant.user.id }, data: { elo: { increment: eloChange } } }),
-    prisma.user.update({ where: { id: loserParticipant.user.id }, data: { elo: { decrement: eloChange } } }),
-    prisma.playerStats.upsert({
-      where: { userId: winnerParticipant.user.id },
-      create: { userId: winnerParticipant.user.id, wins: 1 },
-      update: { wins: { increment: 1 } },
-    }),
-    prisma.playerStats.upsert({
-      where: { userId: loserParticipant.user.id },
-      create: { userId: loserParticipant.user.id, losses: 1 },
-      update: { losses: { increment: 1 } },
-    }),
   ]);
 }
 

@@ -203,10 +203,7 @@ export const register = async (req: Request, res: Response, next: NextFunction) 
       user = await prisma.user.create({ data: commonData, select: userSelect });
     }
 
-    // Create empty stats only for truly new accounts (ghost already has stats row)
-    if (isNewAccount) {
-      await prisma.playerStats.create({ data: { userId: user.id } }).catch(() => {});
-    }
+    // (playerStats removed — ELO feature disabled)
 
     // Send welcome + verification email (non-blocking)
     const clientUrl = process.env.CLIENT_URL ?? "https://torneos.dardosdm.com";
