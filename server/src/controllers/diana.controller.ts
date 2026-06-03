@@ -6,6 +6,21 @@ import { notFound, forbidden, badRequest } from "../utils/errors";
 import { Server as SocketServer } from "socket.io";
 import { handleBracketAdvancement } from "./match.controller";
 import { sendPushToUser } from "../lib/push";
+import { emitMatchUpdated } from "../lib/socketServer";
+
+// Helper: fetch a match with the full include shape the client expects, then broadcast it
+async function broadcastMatch(matchId: string) {
+  const m = await prisma.match.findUnique({
+    where: { id: matchId },
+    include: {
+      participant1: { include: { user: { select: { id: true, name: true, avatarUrl: true, elo: true } }, team: { select: { id: true, name: true, logoUrl: true } } } },
+      participant2: { include: { user: { select: { id: true, name: true, avatarUrl: true, elo: true } }, team: { select: { id: true, name: true, logoUrl: true } } } },
+      winner:       { include: { user: { select: { id: true, name: true, avatarUrl: true } }, team: { select: { id: true, name: true } } } },
+      diana:        { select: { id: true, number: true } },
+    },
+  });
+  if (m) emitMatchUpdated(m.tournamentId, m);
+}
 
 const LAUNCH_COOLDOWN_MS = 5 * 60 * 1000; // 5 minutes
 
@@ -100,6 +115,7 @@ export const assignDiana = async (req: AuthRequest, res: Response, next: NextFun
     // Assign new diana
     await prisma.diana.update({ where: { id: diana.id }, data: { matchId: req.params.matchId } });
 
+    broadcastMatch(req.params.matchId).catch(() => {});
     res.json({ data: null, message: `Diana ${dianaNumber} asignada` });
   } catch (err) { next(err); }
 };
@@ -151,6 +167,7 @@ export const unassignDiana = async (req: AuthRequest, res: Response, next: NextF
       data: { launch1At: null, launch2At: null, launch3At: null, noShowAt: null, noShowReason: null },
     });
 
+    broadcastMatch(req.params.matchId).catch(() => {});
     res.json({ data: null, message: "Diana liberada" });
   } catch (err) { next(err); }
 };
@@ -276,8 +293,8 @@ export const launchMatch = async (req: AuthRequest, res: Response, next: NextFun
       }
 
       await prisma.match.update({ where: { id: match.id }, data: { launch1At: now } });
-      // Send push notification to both participants (fire-and-forget)
       sendPushNotification(match, tournament.name, 1);
+      broadcastMatch(match.id).catch(() => {});
       return res.json({ data: { call: 1, at: now.toISOString() }, message: "Primera llamada registrada" });
     }
 
@@ -289,6 +306,7 @@ export const launchMatch = async (req: AuthRequest, res: Response, next: NextFun
       }
       await prisma.match.update({ where: { id: match.id }, data: { launch2At: now } });
       sendPushNotification(match, tournament.name, 2);
+      broadcastMatch(match.id).catch(() => {});
       return res.json({ data: { call: 2, at: now.toISOString() }, message: "Segunda llamada registrada" });
     }
 
@@ -300,6 +318,7 @@ export const launchMatch = async (req: AuthRequest, res: Response, next: NextFun
       }
       await prisma.match.update({ where: { id: match.id }, data: { launch3At: now } });
       sendPushNotification(match, tournament.name, 3);
+      broadcastMatch(match.id).catch(() => {});
       return res.json({ data: { call: 3, at: now.toISOString() }, message: "Tercera llamada registrada" });
     }
 

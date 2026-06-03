@@ -8,16 +8,10 @@ import { notFound, forbidden, badRequest } from "../utils/errors";
 import { generateBracket, generateRoundRobin, generateSingleElimination, computeRRStandings } from "../services/bracket.service";
 import { sendInscriptionPending, sendInscriptionApproved } from "../lib/email";
 import { audit } from "../lib/audit";
-import { Server as SocketServer } from "socket.io";
+import { setIo, emitTournamentUpdated } from "../lib/socketServer";
 
-// Module-level socket server — set once by routes during init
-let _io: SocketServer | null = null;
-export function setSocketServer(io: SocketServer) { _io = io; }
-
-/** Emit tournament:updated to all clients watching this tournament room */
-function emitTournamentUpdated(tournamentId: string, data: object) {
-  _io?.to(`tournament:${tournamentId}`).emit("tournament:updated", { tournamentId, ...data });
-}
+/** Called from routes to register the socket server instance */
+export function setSocketServer(io: import("socket.io").Server) { setIo(io); }
 
 // Valid odd match lengths — global and per-level
 const GLOBAL_BEST_OF = [1, 3, 5, 7] as const;
