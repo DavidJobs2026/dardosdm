@@ -383,17 +383,14 @@ export const refresh = async (req: Request, res: Response, next: NextFunction) =
       return next(unauthorized("Invalid or expired refresh token"));
     }
 
-    // ── User-Agent binding check ──────────────────────────────────────────────
-    // If the token was issued with a UA and the current request comes from a
-    // different UA, treat it as a stolen token: reject + clear cookie.
-    // Tokens issued before this feature (userAgent = null) are let through once
-    // so existing sessions aren't broken on deploy; the replacement token will
-    // carry the UA going forward.
+    // ── User-Agent logging (non-blocking) ────────────────────────────────────
+    // We record the UA for auditing but do NOT block on mismatch.
+    // Chrome auto-updates change the version number in the UA string on every
+    // release, which caused legitimate users to be logged out after each update.
+    // The httpOnly cookie + delete-first rotation already prevents token replay.
     const currentUA = extractUserAgent(req);
     if (stored.userAgent !== null && stored.userAgent !== currentUA) {
-      clearRefreshCookie(res);
-      console.warn(`[auth] refresh token UA mismatch — possible token theft. userId=${stored.userId} stored="${stored.userAgent?.slice(0, 80)}" current="${currentUA?.slice(0, 80)}"`);
-      return next(unauthorized("Session invalid — please log in again"));
+      console.info(`[auth] refresh UA changed (browser update?) userId=${stored.userId} stored="${stored.userAgent?.slice(0, 60)}" current="${currentUA?.slice(0, 60)}"`);
     }
 
     const payload = verifyRefreshToken(refreshToken);
