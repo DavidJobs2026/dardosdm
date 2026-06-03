@@ -408,9 +408,15 @@ async function dropToLosers(
     lbPosition = Math.floor(wbPosition / 2);
     isSlot1    = wbPosition % 2 === 0;
   } else {
-    // WB Rk (k≥2) losers drop into LB R(2k-2) as the WB drop-in (slot 2)
-    lbRound    = 2 * (wbRound - 1);
-    lbPosition = wbPosition;
+    // WB Rk (k≥2) losers drop into LB R(2k-2) cross-seeded to prevent rematches.
+    // Within each group of 2^(k-1) positions, the drop position is mirrored so
+    // the WB loser faces someone from the opposite half of the bracket.
+    // e.g. WB R2 (groupSize=2): pos 0→lbPos 1, pos 1→lbPos 0
+    //      WB R3 (groupSize=4): pos 0→3, 1→2, 2→1, 3→0
+    lbRound = 2 * (wbRound - 1);
+    const groupSize  = Math.pow(2, wbRound - 1);
+    const groupStart = Math.floor(wbPosition / groupSize) * groupSize;
+    lbPosition = groupStart + (groupSize - 1 - (wbPosition % groupSize));
     isSlot1    = false;
   }
 
