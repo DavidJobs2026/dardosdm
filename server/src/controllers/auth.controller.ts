@@ -8,6 +8,15 @@ import { badRequest, unauthorized, notFound } from "../utils/errors";
 import { AuthRequest } from "../middlewares/auth.middleware";
 import { sendWelcomeVerification, sendPasswordReset, sendPasswordChangedAlert } from "../lib/email";
 
+// ─── Token hashing helper (VULN-018) ─────────────────────────────────────────
+// Reset and verification tokens are stored as SHA-256 hashes in the DB.
+// The raw token is only ever sent in the email — it never touches the DB.
+// If the database is compromised, the attacker cannot use the stored hashes
+// to trigger password resets (pre-image resistance of SHA-256).
+function hashToken(raw: string): string {
+  return crypto.createHash("sha256").update(raw).digest("hex");
+}
+
 // ─── Request fingerprint helpers ─────────────────────────────────────────────
 // We bind each refresh token to the User-Agent so a stolen cookie can't be
 // replayed from a different browser/device.  IP is intentionally excluded
@@ -150,7 +159,9 @@ export const register = async (req: Request, res: Response, next: NextFunction) 
     const passwordHash = await bcrypt.hash(password, 12);
 
     // All public registrations require email verification
-    const emailVerifyToken   = crypto.randomBytes(32).toString("hex");
+    // VULN-018: store hash, send raw token in email only
+    const rawVerifyToken     = crypto.randomBytes(32).toString("hex");
+    const emailVerifyToken   = hashToken(rawVerifyToken);  // hashed — safe in DB
     const emailVerifyExpires = new Date(Date.now() + 24 * 60 * 60 * 1000);
 
     const commonData = {
@@ -199,7 +210,8 @@ export const register = async (req: Request, res: Response, next: NextFunction) 
 
     // Send welcome + verification email (non-blocking)
     const clientUrl = process.env.CLIENT_URL ?? "https://torneos.dardosdm.com";
-    const verifyUrl = `${clientUrl}/verificar-email?token=${emailVerifyToken}`;
+    // rawVerifyToken goes in the URL; emailVerifyToken (hash) stays in the DB
+    const verifyUrl = `${clientUrl}/verificar-email?token=${rawVerifyToken}`;
     sendWelcomeVerification({ to: email, name, verifyUrl }).catch(err =>
       console.error("[email] Failed to send welcome email:", err)
     );
@@ -251,7 +263,8 @@ export const verifyEmail = async (req: Request, res: Response, next: NextFunctio
     const token = String(req.query.token || "").trim();
     if (!token) return next(badRequest("Token requerido"));
 
-    const user = await prisma.user.findUnique({ where: { emailVerifyToken: token } });
+    // Hash before lookup — DB stores SHA-256(token), not the raw token (VULN-018)
+    const user = await prisma.user.findUnique({ where: { emailVerifyToken: hashToken(token) } });
     if (!user) return next(badRequest("Enlace inválido o ya utilizado"));
     if (user.emailVerifyExpires && user.emailVerifyExpires < new Date()) {
       return next(badRequest("El enlace ha caducado. Solicita uno nuevo."));
@@ -282,16 +295,16 @@ export const requestVerification = async (req: Request, res: Response, next: Nex
       return res.json({ data: { message: "Si la dirección es correcta recibirás el email en breve" } });
     }
 
-    const emailVerifyToken   = crypto.randomBytes(32).toString("hex");
+    const rawToken           = crypto.randomBytes(32).toString("hex");
     const emailVerifyExpires = new Date(Date.now() + 24 * 60 * 60 * 1000);
 
     await prisma.user.update({
       where: { id: user.id },
-      data: { emailVerifyToken, emailVerifyExpires },
+      data: { emailVerifyToken: hashToken(rawToken), emailVerifyExpires },
     });
 
     const clientUrl = process.env.CLIENT_URL ?? "https://torneos.dardosdm.com";
-    const verifyUrl = `${clientUrl}/verificar-email?token=${emailVerifyToken}`;
+    const verifyUrl = `${clientUrl}/verificar-email?token=${rawToken}`;
     await sendWelcomeVerification({ to: user.email, name: user.name, verifyUrl });
 
     return res.json({ data: { message: "Si la dirección es correcta recibirás el email en breve" } });
@@ -309,16 +322,16 @@ export const resendVerification = async (req: Request, res: Response, next: Next
     if (!user) return next(notFound("Usuario"));
     if (user.emailVerified) return res.json({ data: { message: "Email ya verificado" } });
 
-    const emailVerifyToken   = crypto.randomBytes(32).toString("hex");
+    const rawToken           = crypto.randomBytes(32).toString("hex");
     const emailVerifyExpires = new Date(Date.now() + 24 * 60 * 60 * 1000);
 
     await prisma.user.update({
       where: { id: userId },
-      data: { emailVerifyToken, emailVerifyExpires },
+      data: { emailVerifyToken: hashToken(rawToken), emailVerifyExpires },
     });
 
     const clientUrl = process.env.CLIENT_URL ?? "https://torneos.dardosdm.com";
-    const verifyUrl = `${clientUrl}/verificar-email?token=${emailVerifyToken}`;
+    const verifyUrl = `${clientUrl}/verificar-email?token=${rawToken}`;
     await sendWelcomeVerification({ to: user.email, name: user.name, verifyUrl });
 
     return res.json({ data: { message: "Email de verificación reenviado" } });
@@ -481,16 +494,18 @@ export const forgotPassword = async (req: Request, res: Response, next: NextFunc
     // Always return 200 — never reveal whether the email exists
     const user = await prisma.user.findUnique({ where: { email } });
     if (user) {
-      const token   = crypto.randomBytes(32).toString("hex");
-      const expires = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
+      const rawToken = crypto.randomBytes(32).toString("hex");
+      const expires  = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
 
+      // Store the SHA-256 hash — never the raw token (VULN-018)
       await prisma.user.update({
         where: { id: user.id },
-        data:  { pwResetToken: token, pwResetExpires: expires },
+        data:  { pwResetToken: hashToken(rawToken), pwResetExpires: expires },
       });
 
+      // Send the raw token in the URL — only the recipient can use it
       const clientUrl = process.env.CLIENT_URL ?? "https://torneos.dardosdm.com";
-      const resetUrl  = `${clientUrl}/auth/reset-password?token=${token}`;
+      const resetUrl  = `${clientUrl}/auth/reset-password?token=${rawToken}`;
 
       sendPasswordReset({ to: user.email, name: user.name, resetUrl }).catch((e) =>
         console.error("[auth] forgot-password email failed:", e)
@@ -508,10 +523,17 @@ export const resetPassword = async (req: Request, res: Response, next: NextFunct
   try {
     const { token, password } = z.object({
       token:    z.string().min(1),
-      password: z.string().min(8, "La contraseña debe tener al menos 8 caracteres"),
+      // VULN-005: apply the same strong policy as registration
+      password: z.string()
+        .min(8,    "La contraseña debe tener al menos 8 caracteres")
+        .regex(/[A-Z]/, "La contraseña debe contener al menos una mayúscula")
+        .regex(/[a-z]/, "La contraseña debe contener al menos una minúscula")
+        .regex(/\d/,    "La contraseña debe contener al menos un número")
+        .regex(/[^A-Za-z0-9]/, "La contraseña debe contener al menos un símbolo"),
     }).parse(req.body);
 
-    const user = await prisma.user.findUnique({ where: { pwResetToken: token } });
+    // VULN-018: look up by hash — the DB only stores SHA-256(token)
+    const user = await prisma.user.findUnique({ where: { pwResetToken: hashToken(token) } });
 
     if (!user || !user.pwResetExpires || user.pwResetExpires < new Date()) {
       return next(badRequest("El enlace de restablecimiento no es válido o ha expirado"));
