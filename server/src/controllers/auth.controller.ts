@@ -58,9 +58,13 @@ const registerSchema = z.object({
                      .regex(/\d/,    "La contraseña debe contener al menos un número")
                      .regex(/[^A-Za-z0-9]/, "La contraseña debe contener al menos un símbolo"),
   name:            z.string().min(2, "Name must be at least 2 characters"),
-  // "admin" is never allowed via the public registration endpoint.
-  // Admins must be promoted by an existing admin via PATCH /users/:id/role.
-  role:            z.enum(["organizer", "player"]).optional().default("player"),
+  // Role is ALWAYS "player" on the public registration endpoint.
+  // Organizer / admin accounts must be created by an existing admin via the
+  // dashboard (POST /users  or PATCH /users/:id/role). Accepting a caller-
+  // supplied role here was a privilege-escalation vulnerability.
+  // We keep the field in the schema (for internal/test calls) but strip any
+  // non-player value before it reaches the DB.
+  role:            z.enum(["player"]).optional().default("player"),
   // Player-specific fields (optional for organizer/admin)
   dni:             z.string().optional(),
   // Players must provide a valid Spanish mobile number (9 digits, starts with 6 or 7)
@@ -131,7 +135,10 @@ export const checkEmail = async (req: Request, res: Response, next: NextFunction
 export const register = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const body = registerSchema.parse(req.body);
-    const { password, role } = body;
+    const { password } = body;
+    // Public registration ALWAYS creates a player — regardless of any role field
+    // that may have been passed. Organizer/admin accounts are created by admins only.
+    const role  = "player" as const;
     const email = body.email.toLowerCase().trim();
     const name  = body.name.trim().toUpperCase();
     const dni   = body.dni?.trim().toUpperCase() || null;
@@ -141,10 +148,9 @@ export const register = async (req: Request, res: Response, next: NextFunction) 
 
     const passwordHash = await bcrypt.hash(password, 12);
 
-    // Generate email-verification token (only for players)
-    const isPlayer = role === "player";
-    const emailVerifyToken   = isPlayer ? crypto.randomBytes(32).toString("hex") : null;
-    const emailVerifyExpires = isPlayer ? new Date(Date.now() + 24 * 60 * 60 * 1000) : null;
+    // All public registrations require email verification
+    const emailVerifyToken   = crypto.randomBytes(32).toString("hex");
+    const emailVerifyExpires = new Date(Date.now() + 24 * 60 * 60 * 1000);
 
     const commonData = {
       email, name, passwordHash, role, dni,
@@ -156,7 +162,7 @@ export const register = async (req: Request, res: Response, next: NextFunction) 
       emailConsent:    body.emailConsent ?? false,
       ligaCard:        body.ligaCard || null,
       clubCard:        body.clubCard || null,
-      emailVerified:      !isPlayer,
+      emailVerified:      false,  // always requires verification on public registration
       emailVerifyToken,
       emailVerifyExpires,
     };
@@ -191,30 +197,26 @@ export const register = async (req: Request, res: Response, next: NextFunction) 
     }
 
     // Send welcome + verification email (non-blocking)
-    if (isPlayer && emailVerifyToken) {
-      const clientUrl = process.env.CLIENT_URL ?? "https://torneos.dardosdm.com";
-      const verifyUrl = `${clientUrl}/verificar-email?token=${emailVerifyToken}`;
-      sendWelcomeVerification({ to: email, name, verifyUrl }).catch(err =>
-        console.error("[email] Failed to send welcome email:", err)
-      );
-    }
+    const clientUrl = process.env.CLIENT_URL ?? "https://torneos.dardosdm.com";
+    const verifyUrl = `${clientUrl}/verificar-email?token=${emailVerifyToken}`;
+    sendWelcomeVerification({ to: email, name, verifyUrl }).catch(err =>
+      console.error("[email] Failed to send welcome email:", err)
+    );
 
-    // Players must verify their email before getting tokens.
-    // Organizers/admins are pre-verified so they get tokens immediately.
-    if (isPlayer) {
-      return res.status(201).json({
-        data: {
-          user: {
-            id: user.id, email: user.email, name: user.name, role: user.role,
-            elo: user.elo, createdAt: user.createdAt,
-            emailVerified: false,
-          },
-          requiresEmailVerification: true,
-          // No tokens — player must verify email and then log in
+    // All public registrations require email verification before receiving tokens.
+    return res.status(201).json({
+      data: {
+        user: {
+          id: user.id, email: user.email, name: user.name, role: user.role,
+          elo: user.elo, createdAt: user.createdAt,
+          emailVerified: false,
         },
-      });
-    }
+        requiresEmailVerification: true,
+        // No tokens issued until email is verified
+      },
+    });
 
+    // (unreachable — kept as a reminder: token issuance only in login, never register)
     const payload = { userId: user.id, role: user.role };
     const accessToken = signAccessToken(payload);
     const refreshToken = signRefreshToken(payload);
