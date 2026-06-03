@@ -11,23 +11,27 @@ const createSchema = z.object({
   logoUrl: z.string().url().optional(),
 });
 
-router.get("/", async (_req, res, next) => {
+// User select without elo (ELO feature removed)
+const memberUserSelect = { id: true, name: true, avatarUrl: true };
+const memberInclude = { members: { include: { user: { select: memberUserSelect } } } };
+
+// VULN-025 fix: GET endpoints now require authentication
+// (previously exposed all team members and user IDs without login)
+router.get("/", authenticate, async (_req, res, next) => {
   try {
     const teams = await prisma.team.findMany({
-      include: {
-        members: { include: { user: { select: { id: true, name: true, avatarUrl: true, elo: true } } } },
-      },
+      include: memberInclude,
       orderBy: { createdAt: "desc" },
     });
     res.json({ data: teams });
   } catch (err) { next(err); }
 });
 
-router.get("/:id", async (req, res, next) => {
+router.get("/:id", authenticate, async (req, res, next) => {
   try {
     const team = await prisma.team.findUnique({
       where: { id: req.params.id },
-      include: { members: { include: { user: { select: { id: true, name: true, avatarUrl: true, elo: true } } } } },
+      include: memberInclude,
     });
     if (!team) return next(notFound("Team"));
     res.json({ data: team });
@@ -42,7 +46,7 @@ router.post("/", authenticate, async (req: AuthRequest, res: Response, next: Nex
         name, logoUrl, createdById: req.user!.userId,
         members: { create: { userId: req.user!.userId, role: "captain" } },
       },
-      include: { members: { include: { user: { select: { id: true, name: true, avatarUrl: true, elo: true } } } } },
+      include: memberInclude,
     });
     res.status(201).json({ data: team });
   } catch (err) { next(err); }
@@ -65,7 +69,7 @@ router.post("/:id/members", authenticate, async (req: AuthRequest, res: Response
 
     const member = await prisma.teamMember.create({
       data: { teamId: team.id, userId },
-      include: { user: { select: { id: true, name: true, avatarUrl: true, elo: true } } },
+      include: { user: { select: memberUserSelect } },
     });
     res.status(201).json({ data: member });
   } catch (err) { next(err); }

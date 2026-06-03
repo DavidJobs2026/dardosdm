@@ -1421,15 +1421,25 @@ export const playerInscribe = async (req: AuthRequest, res: Response, next: Next
       if (dniDuplicate) return next(badRequest("Ya estás inscrito en este torneo"));
     }
 
-    const participant = await prisma.participant.create({
-      data: {
-        tournamentId: tournament.id,
-        entityType: tournament.participantType as any,
-        userId: req.user!.userId,
-        inscriptionStatus: "pending_web",
-        paymentStatus: "pending",
-      },
-    });
+    let participant;
+    try {
+      participant = await prisma.participant.create({
+        data: {
+          tournamentId: tournament.id,
+          entityType: tournament.participantType as any,
+          userId: req.user!.userId,
+          inscriptionStatus: "pending_web",
+          paymentStatus: "pending",
+        },
+      });
+    } catch (createErr: any) {
+      // P2002 = unique constraint violation — race condition: two simultaneous
+      // requests both passed the pre-checks. DB constraint is the real guard.
+      if (createErr?.code === "P2002") {
+        return next(badRequest("Ya estás inscrito en este torneo"));
+      }
+      throw createErr;
+    }
 
     // Send inscription-pending email (non-blocking)
     const clientUrl = process.env.CLIENT_URL ?? "https://torneos.dardosdm.com";
