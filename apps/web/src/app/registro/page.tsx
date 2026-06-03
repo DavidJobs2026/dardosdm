@@ -75,6 +75,24 @@ function validateDni(raw: string): boolean {
   return false;
 }
 
+// ─── Password rules ───────────────────────────────────────────────────────────
+
+const PWD_RULES = [
+  { id: "length",    label: "Mínimo 8 caracteres",          test: (p: string) => p.length >= 8 },
+  { id: "upper",     label: "Una letra mayúscula (A–Z)",    test: (p: string) => /[A-Z]/.test(p) },
+  { id: "lower",     label: "Una letra minúscula (a–z)",    test: (p: string) => /[a-z]/.test(p) },
+  { id: "number",    label: "Un número (0–9)",              test: (p: string) => /\d/.test(p) },
+  { id: "special",   label: "Un símbolo (!@#$%...)",        test: (p: string) => /[^A-Za-z0-9]/.test(p) },
+] as const;
+
+function passwordStrength(pwd: string): number {
+  return PWD_RULES.filter(r => r.test(pwd)).length;
+}
+
+const STRENGTH_LABELS = ["", "Muy débil", "Débil", "Aceptable", "Buena", "Segura"];
+const STRENGTH_COLORS = ["", "bg-red-500", "bg-orange-500", "bg-yellow-400", "bg-lime-500", "bg-green-500"];
+const STRENGTH_TEXT   = ["", "text-red-400", "text-orange-400", "text-yellow-400", "text-lime-400", "text-green-400"];
+
 // ─── Main registration page ───────────────────────────────────────────────────
 export default function RegistroPage() {
   const router = useRouter();
@@ -215,8 +233,9 @@ export default function RegistroPage() {
       toast.error("Corrige el teléfono antes de continuar");
       return;
     }
-    if (password.length < 8) {
-      toast.error("La contraseña debe tener al menos 8 caracteres");
+    const failedRules = PWD_RULES.filter(r => !r.test(password));
+    if (failedRules.length > 0) {
+      toast.error(`Contraseña insegura: ${failedRules[0].label.toLowerCase()}`);
       return;
     }
     if (password !== confirmPassword) {
@@ -515,7 +534,8 @@ export default function RegistroPage() {
                 </div>
               </div>
 
-              <div>
+              {/* ── Contraseña ── */}
+              <div className="space-y-2">
                 <label className="block text-xs font-semibold text-ink-400 mb-1.5 uppercase tracking-wider">Contraseña</label>
                 <div className="relative">
                   <input
@@ -523,18 +543,59 @@ export default function RegistroPage() {
                     onChange={e => setPassword(e.target.value)}
                     type={showPassword ? "text" : "password"}
                     className={clsx(inputCls, "pr-10")}
-                    placeholder="Mínimo 8 caracteres"
+                    placeholder="Crea una contraseña segura"
                   />
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword(v => !v)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-ink-500 hover:text-white transition-colors"
-                  >
+                  <button type="button" onClick={() => setShowPassword(v => !v)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-ink-500 hover:text-white transition-colors">
                     {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                   </button>
                 </div>
+
+                {/* Strength bar — only shown once user starts typing */}
+                {password.length > 0 && (() => {
+                  const strength = passwordStrength(password);
+                  return (
+                    <div className="space-y-1.5">
+                      {/* Bar */}
+                      <div className="flex gap-1">
+                        {[1,2,3,4,5].map(i => (
+                          <div key={i} className={clsx(
+                            "h-1.5 flex-1 rounded-full transition-all duration-300",
+                            i <= strength ? STRENGTH_COLORS[strength] : "bg-ink-700"
+                          )} />
+                        ))}
+                      </div>
+                      <p className={clsx("text-xs font-semibold", STRENGTH_TEXT[strength])}>
+                        {STRENGTH_LABELS[strength]}
+                      </p>
+                    </div>
+                  );
+                })()}
+
+                {/* Requirements checklist */}
+                {password.length > 0 && (
+                  <div className="grid grid-cols-1 gap-1 pt-1">
+                    {PWD_RULES.map(rule => {
+                      const ok = rule.test(password);
+                      return (
+                        <div key={rule.id} className="flex items-center gap-2">
+                          <div className={clsx(
+                            "w-3.5 h-3.5 rounded-full flex items-center justify-center shrink-0 transition-all",
+                            ok ? "bg-green-600" : "bg-ink-700"
+                          )}>
+                            {ok && <Check className="w-2.5 h-2.5 text-white" />}
+                          </div>
+                          <span className={clsx("text-xs transition-colors", ok ? "text-green-400" : "text-ink-500")}>
+                            {rule.label}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
 
+              {/* ── Confirmar contraseña ── */}
               <div>
                 <label className="block text-xs font-semibold text-ink-400 mb-1.5 uppercase tracking-wider">Confirmar contraseña</label>
                 <div className="relative">
@@ -542,19 +603,27 @@ export default function RegistroPage() {
                     value={confirmPassword}
                     onChange={e => setConfirmPassword(e.target.value)}
                     type={showConfirm ? "text" : "password"}
-                    className={clsx(inputCls, "pr-10", confirmPassword && password !== confirmPassword ? "border-red-500/60" : "")}
+                    className={clsx(
+                      inputCls, "pr-10",
+                      confirmPassword && password !== confirmPassword ? "border-red-500/60" : "",
+                      confirmPassword && password === confirmPassword && confirmPassword.length > 0 ? "border-green-600/60" : ""
+                    )}
                     placeholder="Repite la contraseña"
                   />
-                  <button
-                    type="button"
-                    onClick={() => setShowConfirm(v => !v)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-ink-500 hover:text-white transition-colors"
-                  >
+                  <button type="button" onClick={() => setShowConfirm(v => !v)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-ink-500 hover:text-white transition-colors">
                     {showConfirm ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                   </button>
                 </div>
                 {confirmPassword && password !== confirmPassword && (
-                  <p className="text-red-400 text-xs mt-1">Las contraseñas no coinciden</p>
+                  <p className="text-red-400 text-xs mt-1 flex items-center gap-1.5">
+                    <span>⚠</span> Las contraseñas no coinciden
+                  </p>
+                )}
+                {confirmPassword && password === confirmPassword && confirmPassword.length > 0 && (
+                  <p className="text-green-400 text-xs mt-1 flex items-center gap-1.5">
+                    <Check className="w-3 h-3" /> Las contraseñas coinciden
+                  </p>
                 )}
               </div>
 

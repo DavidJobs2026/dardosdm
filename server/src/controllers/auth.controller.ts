@@ -46,7 +46,12 @@ function clearRefreshCookie(res: Response) {
 
 const registerSchema = z.object({
   email:           z.string().email(),
-  password:        z.string().min(8, "Password must be at least 8 characters"),
+  password:        z.string()
+                     .min(8,    "La contraseña debe tener al menos 8 caracteres")
+                     .regex(/[A-Z]/, "La contraseña debe contener al menos una mayúscula")
+                     .regex(/[a-z]/, "La contraseña debe contener al menos una minúscula")
+                     .regex(/\d/,    "La contraseña debe contener al menos un número")
+                     .regex(/[^A-Za-z0-9]/, "La contraseña debe contener al menos un símbolo"),
   name:            z.string().min(2, "Name must be at least 2 characters"),
   // "admin" is never allowed via the public registration endpoint.
   // Admins must be promoted by an existing admin via PATCH /users/:id/role.
