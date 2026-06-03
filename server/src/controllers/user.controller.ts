@@ -275,9 +275,14 @@ export const findOrCreatePlayer = async (req: AuthRequest, res: Response, next: 
             .normalize("NFD").replace(/[̀-ͯ]/g, "")
             .replace(/[^a-z0-9\s]/g, "").trim()
             .split(/\s+/).slice(0, 3).join(".");
-      const email    = `${emailSlug || "jugador"}@torneo.local`;
+      // VULN-020 fix: two players with names that normalise to the same slug collide
+      // on the same @torneo.local email. Add a random suffix to guarantee uniqueness.
+      const baseSlug = emailSlug || "jugador";
+      const uniqueSuffix = crypto.randomBytes(3).toString("hex"); // 6 hex chars
+      const email = `${baseSlug}.${uniqueSuffix}@torneo.local`;
+
       // Use a cryptographically-secure random password — these @torneo.local accounts
-      // are internal-only and should not be loginable via the public auth endpoint.
+      // are internal-only and cannot be logged into via the public auth endpoint.
       const passwordHash = await bcrypt.hash(crypto.randomBytes(32).toString("hex"), 12);
       user = await prisma.user.create({
         data:   { name: name.trim().toUpperCase(), email, passwordHash },
@@ -454,7 +459,7 @@ export const updateUserName = async (req: AuthRequest, res: Response, next: Next
   try {
     if (req.user!.role === "player") return next(forbidden());
     const { name } = z.object({
-      name: z.string().min(2, "Mínimo 2 caracteres"),
+      name: z.string().min(2, "Mínimo 2 caracteres").max(100),
     }).parse(req.body);
 
     if (req.user!.role === "organizer") {
@@ -477,7 +482,7 @@ export const updateUserPassword = async (req: AuthRequest, res: Response, next: 
   try {
     if (req.user!.role === "player") return next(forbidden());
     const { password } = z.object({
-      password: z.string().min(8, "Mínimo 8 caracteres"),
+      password: z.string().min(8, "Mínimo 8 caracteres").max(72, "Máximo 72 caracteres"),
     }).parse(req.body);
 
     if (req.user!.role === "organizer") {

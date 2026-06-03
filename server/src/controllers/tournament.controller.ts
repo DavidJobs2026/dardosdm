@@ -20,7 +20,7 @@ type GlobalBestOf = typeof GLOBAL_BEST_OF[number];
 const isOdd = (n: number) => n % 2 === 1 && n >= 1 && n <= 21;
 
 const levelSchema = z.object({
-  name:            z.string().min(1),
+  name:            z.string().min(1).max(60),
   minValue:        z.number(),
   maxValue:        z.number().optional(),
   maxParticipants: z.number().int().optional(), // null/undefined = sin límite
@@ -34,7 +34,7 @@ const levelSchema = z.object({
 const emptyToUndefined = (v: unknown) => (v === "" ? undefined : v);
 
 const createSchema = z.object({
-  name:            z.string().min(3),
+  name:            z.string().min(3).max(120),
   description:     z.preprocess(emptyToUndefined, z.string().max(5000).optional()),
   format:          z.enum(["single_elimination", "double_elimination", "round_robin"]),
   maxParticipants: z.number().int().min(0).max(512), // 0 = sin límite

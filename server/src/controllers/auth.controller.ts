@@ -59,14 +59,18 @@ function clearRefreshCookie(res: Response) {
 }
 
 const registerSchema = z.object({
-  email:           z.string().email(),
+  email:           z.string().email().max(254),
   password:        z.string()
                      .min(8,    "La contraseña debe tener al menos 8 caracteres")
+                     // bcrypt silently truncates at 72 bytes — a longer password provides
+                     // no additional security and a 10 MB payload would cause a DoS
+                     // (bcrypt is intentionally slow: ~100ms per hash at cost 12)
+                     .max(72,   "La contraseña no puede superar 72 caracteres")
                      .regex(/[A-Z]/, "La contraseña debe contener al menos una mayúscula")
                      .regex(/[a-z]/, "La contraseña debe contener al menos una minúscula")
                      .regex(/\d/,    "La contraseña debe contener al menos un número")
                      .regex(/[^A-Za-z0-9]/, "La contraseña debe contener al menos un símbolo"),
-  name:            z.string().min(2, "Name must be at least 2 characters"),
+  name:            z.string().min(2, "Name must be at least 2 characters").max(100),
   // Role is ALWAYS "player" on the public registration endpoint.
   // Organizer / admin accounts must be created by an existing admin via the
   // dashboard (POST /users  or PATCH /users/:id/role). Accepting a caller-
@@ -92,8 +96,10 @@ const registerSchema = z.object({
 });
 
 const loginSchema = z.object({
-  email: z.string().email(),
-  password: z.string(),
+  email:    z.string().email().max(254),
+  // Hard cap at 72: bcrypt truncates silently beyond this. More importantly,
+  // a 10 MB password takes ~60 s of CPU — one request can DoS the server.
+  password: z.string().max(72, "Contraseña demasiado larga"),
 });
 
 export const checkDni = async (req: Request, res: Response, next: NextFunction) => {
@@ -366,9 +372,15 @@ export const login = async (req: Request, res: Response, next: NextFunction) => 
 
     setRefreshCookie(res, refreshToken);
 
+    // Audit login for security monitoring (detects unauthorized access)
+    const ip = (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() || req.socket?.remoteAddress;
+    prisma.auditLog.create({
+      data: { userId: user.id, action: "user.login", entityType: "user", entityId: user.id, entityName: user.name, ip: ip ?? null, details: {} },
+    }).catch(() => {});
+
     return res.json({
       data: {
-        user: { id: user.id, email: user.email, name: user.name, role: user.role, elo: user.elo, createdAt: user.createdAt },
+        user: { id: user.id, email: user.email, name: user.name, role: user.role, createdAt: user.createdAt },
         tokens: { accessToken }, // refreshToken is now in httpOnly cookie only
       },
     });
@@ -523,6 +535,7 @@ export const resetPassword = async (req: Request, res: Response, next: NextFunct
       // VULN-005: apply the same strong policy as registration
       password: z.string()
         .min(8,    "La contraseña debe tener al menos 8 caracteres")
+        .max(72,   "La contraseña no puede superar 72 caracteres")
         .regex(/[A-Z]/, "La contraseña debe contener al menos una mayúscula")
         .regex(/[a-z]/, "La contraseña debe contener al menos una minúscula")
         .regex(/\d/,    "La contraseña debe contener al menos un número")

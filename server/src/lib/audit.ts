@@ -17,6 +17,7 @@ export type AuditAction =
   | "participant.no_show"
   | "match.report"
   | "match.reset"
+  | "user.login"
   | "user.role_change"
   | "user.reset_password"
   | "user.ban";
