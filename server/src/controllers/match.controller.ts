@@ -416,22 +416,23 @@ async function dropToLosers(
     return;
   }
 
-  // WB Rk (k≥2): drop into LB R(2k-2) cross-seeded in pairs to prevent rematches.
-  // Rule: always mirror within adjacent pairs — pos 0↔1, 2↔3, etc.
-  // If the mirrored LB slot doesn't exist (WB Final = single match), fall back
-  // to the same position so the loser still gets placed correctly.
+  // WB Rk (k≥2): drop into LB R(2k-2) cross-seeded to prevent rematches.
+  // groupSize = number of LB matches at this merge round (varies by bracket size):
+  //   8-player LB R2 = 2 matches → groupSize 2 → pos 0↔1
+  //  16-player LB R2 = 4 matches → groupSize 4 → pos 0↔3, 1↔2
+  //  WB Final → LB Final = 1 match → no cross-seeding
   lbRound = 2 * (wbRound - 1);
-  const mirroredPos = wbPosition % 2 === 0 ? wbPosition + 1 : wbPosition - 1;
-
-  let lbMatch = await prisma.match.findFirst({
-    where: { tournamentId, bracketLevel, round: lbRound, position: mirroredPos, bracketSide: "losers" },
+  const lbMatchCount = await prisma.match.count({
+    where: { tournamentId, bracketLevel, round: lbRound, bracketSide: "losers" },
   });
-  // Fallback: WB Final has only 1 match (pos 0), mirrored pos 1 doesn't exist
-  if (!lbMatch) {
-    lbMatch = await prisma.match.findFirst({
-      where: { tournamentId, bracketLevel, round: lbRound, position: wbPosition, bracketSide: "losers" },
-    });
-  }
+  const groupSize = lbMatchCount > 1 ? lbMatchCount : 1;
+  lbPosition = groupSize > 1
+    ? (Math.floor(wbPosition / groupSize) * groupSize) + (groupSize - 1 - (wbPosition % groupSize))
+    : wbPosition;
+
+  const lbMatch = await prisma.match.findFirst({
+    where: { tournamentId, bracketLevel, round: lbRound, position: lbPosition, bracketSide: "losers" },
+  });
   if (!lbMatch) return;
   await prisma.match.update({ where: { id: lbMatch.id }, data: { participant2Id: loserId } });
 }

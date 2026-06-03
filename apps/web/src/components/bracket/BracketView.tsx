@@ -113,15 +113,19 @@ function computeRouting(
       } else {
         // LB R2, R4, R6…: LB prev-round winner (pos mi) + WB drop-in loser (cross-seeded)
         // LB R(2k) drops from WB R(k+1) → wbRegular index k
-        // Cross-seeding: always mirror within adjacent pairs (pos 0↔1, 2↔3…)
-        // Fall back to same position when only 1 WB match exists (WB Final).
+        // groupSize = number of LB matches at this round (mirrors the server logic):
+        //   8-player  LB R2 = 2 matches → pos 0↔1
+        //  16-player  LB R2 = 4 matches → pos 0↔3, 1↔2
+        //   WB Final → LB Final = 1 match → no cross-seeding
         const k            = r / 2;
         const wbDropRound  = wbRegular[k]; // WB R(k+1)
-        const mirroredPos  = mi % 2 === 0 ? mi + 1 : mi - 1;
         const prevLB       = lbRounds[li - 1];
         const lbSrc        = prevLB?.matches[mi];
-        // Use mirrored pos if that WB match exists, else same pos (WB Final edge case)
-        const wbSrc        = wbDropRound?.matches[mirroredPos] ?? wbDropRound?.matches[mi];
+        const groupSize    = lbRounds[li].matches.length;
+        const wbPos        = groupSize > 1
+          ? (Math.floor(mi / groupSize) * groupSize) + (groupSize - 1 - (mi % groupSize))
+          : mi;
+        const wbSrc        = wbDropRound?.matches[wbPos];
         map.set(m.id, [
           lbSrc ? `Ganador de ${nums.get(lbSrc.id)}` : "TBD",
           wbSrc ? `Perdedor de ${nums.get(wbSrc.id)}` : "TBD",
