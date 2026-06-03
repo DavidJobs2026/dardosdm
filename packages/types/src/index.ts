@@ -125,6 +125,7 @@ export interface Tournament {
   metricPlayers?:     number | null;      // for equipos: how many top players count for the metric (≤ teamSize)
   maxMetric?:         number | null;      // registration cap — players above this cannot sign up
   imageUrl?:          string | null;      // tournament cover photo
+  isPublic?:          boolean;            // visible to players in listing
   allowPlayerReg?:    boolean;
   createdBy: string;
   organizer: Pick<User, "id" | "name" | "avatarUrl">;

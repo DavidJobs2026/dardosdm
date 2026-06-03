@@ -172,7 +172,14 @@ export default function TournamentsPage() {
                     {/* ── Card content ── */}
                     <div className="flex flex-col flex-1 p-5">
                       <div className="flex items-start justify-between mb-3">
-                        <span className={STATUS_BADGE[t.status]}>{STATUS_LABELS[t.status]}</span>
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className={STATUS_BADGE[t.status]}>{STATUS_LABELS[t.status]}</span>
+                          {!(t as any).isPublic && (
+                            <span className="text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded bg-ink-800 text-ink-500 border border-ink-700">
+                              🔒 Privado
+                            </span>
+                          )}
+                        </div>
                         <span className="text-xs text-ink-500 bg-ink-800 px-2 py-0.5 rounded-md">
                           {FORMAT_LABELS[t.format]}
                         </span>

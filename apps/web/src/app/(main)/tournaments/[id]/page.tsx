@@ -620,6 +620,8 @@ function TournamentSetup({
   const [preferredSeason,       setPreferredSeason]       = useState<string | null>((tournament as any).preferredSeason ?? null);
   const [imageUrl,              setImageUrl]              = useState<string | null>(tournament.imageUrl ?? null);
   const [allowPlayerReg,        setAllowPlayerReg]        = useState<boolean>((tournament as any).allowPlayerReg ?? false);
+  const [isPublic,              setIsPublic]              = useState<boolean>((tournament as any).isPublic ?? false);
+  const [togglingPublic,        setTogglingPublic]        = useState(false);
   const [saving,         setSaving]         = useState(false);
   const [resetting,      setResetting]      = useState(false);
 
@@ -629,6 +631,21 @@ function TournamentSetup({
     if (f !== "double_elimination") {
       setUseSameLosers(true);
       setBestOfLosers(null);
+    }
+  };
+
+  // Instant publish/unpublish — doesn't require saving the full form
+  const handleTogglePublic = async () => {
+    setTogglingPublic(true);
+    try {
+      await api.patch(`/tournaments/${tournament.id}`, { isPublic: !isPublic });
+      setIsPublic(v => !v);
+      toast.success(!isPublic ? "Torneo publicado — ya visible para jugadores" : "Torneo ocultado — solo visible para organizadores");
+      onSaved();
+    } catch {
+      toast.error("Error al cambiar la visibilidad");
+    } finally {
+      setTogglingPublic(false);
     }
   };
 
@@ -652,6 +669,7 @@ function TournamentSetup({
         winnerOnly,
         estimatedMatchMinutes,
         allowPlayerReg,
+        isPublic,
         preferredSeason: preferredSeason || null,
         ...(format === "round_robin" ? { rrGroupSize, rrAdvancingTeams } : {}),
         ...(participantType === "equipos" ? { teamSize: teamSizeMax, teamSizeMin, metricPlayers } : {}),
@@ -724,6 +742,52 @@ function TournamentSetup({
           )}
         </div>
       )}
+
+      {/* ── 0. Visibilidad ── */}
+      <div className={clsx(
+        "rounded-2xl p-5 border flex items-center justify-between gap-4",
+        isPublic
+          ? "bg-green-900/15 border-green-700/50"
+          : "bg-ink-900 border-ink-800"
+      )}>
+        <div className="min-w-0">
+          <div className="flex items-center gap-2 mb-0.5">
+            <span className={clsx("text-sm font-bold", isPublic ? "text-green-300" : "text-white")}>
+              {isPublic ? "✓ Torneo publicado" : "Torneo privado"}
+            </span>
+            <span className={clsx(
+              "px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide",
+              isPublic ? "bg-green-900/40 text-green-400" : "bg-ink-800 text-ink-500"
+            )}>
+              {isPublic ? "Público" : "Privado"}
+            </span>
+          </div>
+          <p className="text-xs text-ink-500 leading-relaxed">
+            {isPublic
+              ? "Los jugadores pueden ver este torneo en su listado."
+              : "Solo los organizadores pueden ver este torneo. Publícalo cuando esté listo."}
+          </p>
+        </div>
+        <button
+          onClick={handleTogglePublic}
+          disabled={togglingPublic || !canEdit && !isPublic}
+          className={clsx(
+            "shrink-0 flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold transition-all",
+            isPublic
+              ? "bg-ink-800 border border-ink-700 text-ink-300 hover:bg-red-900/20 hover:text-red-400 hover:border-red-800/40"
+              : "bg-green-600 hover:bg-green-500 text-white shadow-lg",
+            (togglingPublic) && "opacity-50 cursor-not-allowed"
+          )}
+        >
+          {togglingPublic ? (
+            <><span className="w-4 h-4 border-2 border-current/30 border-t-current rounded-full animate-spin" /> Guardando…</>
+          ) : isPublic ? (
+            "Ocultar torneo"
+          ) : (
+            "Publicar torneo →"
+          )}
+        </button>
+      </div>
 
       {/* ── 1. Información básica ── */}
       <div className="bg-ink-900 border border-ink-800 rounded-2xl p-5 space-y-4">

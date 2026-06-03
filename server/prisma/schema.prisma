@@ -160,6 +160,7 @@ model Tournament {
   preferredSeason  String?          @map("preferred_season")   // e.g. "LIGA 25-26"; null = most recent
   // ────────────────────────────────────────────────────────────────────────────
   imageUrl        String?          @map("image_url")           // tournament cover photo path
+  isPublic        Boolean          @default(false) @map("is_public")        // visible to players in listing
   allowPlayerReg  Boolean          @default(false) @map("allow_player_reg")
   createdById     String           @map("created_by")
   createdAt       DateTime         @default(now()) @map("created_at")

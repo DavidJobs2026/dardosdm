@@ -51,6 +51,7 @@ const createSchema = z.object({
   rrGroupSize:            z.number().int().min(3).max(8).optional(),
   rrAdvancingTeams:       z.number().int().min(2).max(4).optional(),
   preferredSeason:        z.preprocess(emptyToUndefined, z.string().nullable().optional()),
+  isPublic:               z.boolean().optional(),
   allowPlayerReg:         z.boolean().optional(),
 });
 
@@ -73,7 +74,11 @@ export const listTournaments = async (req: AuthRequest, res: Response, next: Nex
     const VALID_STATUSES = ["draft", "registration", "in_progress", "completed", "cancelled"];
     const VALID_FORMATS  = ["single_elimination", "double_elimination", "round_robin"];
 
+    // Players only see published tournaments; organizers/admins see everything
+    const isPlayer = req.user?.role === "player";
+
     const where = {
+      ...(isPlayer ? { isPublic: true } : {}),
       ...(rawStatus && VALID_STATUSES.includes(rawStatus) ? { status: rawStatus as any } : {}),
       ...(rawFormat && VALID_FORMATS.includes(rawFormat)  ? { format: rawFormat as any } : {}),
     };
@@ -116,6 +121,11 @@ export const getTournament = async (req: AuthRequest, res: Response, next: NextF
       },
     });
     if (!tournament) return next(notFound("Tournament"));
+
+    // Players can only view published tournaments via direct URL
+    if (req.user?.role === "player" && !tournament.isPublic) {
+      return next(notFound("Tournament"));
+    }
 
     return res.json({ data: { ...tournament, createdBy: tournament.createdById, participantsCount: tournament._count.participants, _count: undefined } });
   } catch (err) {
