@@ -1348,10 +1348,37 @@ export const playerInscribe = async (req: AuthRequest, res: Response, next: Next
       return next(badRequest("El torneo está completo"));
     }
 
+    // Check 1: already inscribed by userId
     const existing = await prisma.participant.findUnique({
       where: { tournamentId_userId: { tournamentId: tournament.id, userId: req.user!.userId } },
     });
     if (existing) return next(badRequest("Ya estás inscrito en este torneo"));
+
+    // Check 2: organizer may have inscribed the player from historico (ghost participant
+    // linked by DNI but without a userId). Link the ghost to the real account instead
+    // of creating a duplicate entry.
+    const user = await prisma.user.findUnique({
+      where: { id: req.user!.userId },
+      select: { dni: true },
+    });
+    if (user?.dni) {
+      const ghost = await prisma.participant.findFirst({
+        where: { tournamentId: tournament.id, dni: { equals: user.dni, mode: "insensitive" }, userId: null },
+      });
+      if (ghost) {
+        // Claim the ghost participant — link to the real user account
+        await prisma.participant.update({
+          where: { id: ghost.id },
+          data: { userId: req.user!.userId },
+        });
+        return next(badRequest("Ya estás inscrito en este torneo"));
+      }
+      // Also block if the ghost already has the correct userId (shouldn't happen but guard)
+      const dniDuplicate = await prisma.participant.findFirst({
+        where: { tournamentId: tournament.id, dni: { equals: user.dni, mode: "insensitive" } },
+      });
+      if (dniDuplicate) return next(badRequest("Ya estás inscrito en este torneo"));
+    }
 
     const participant = await prisma.participant.create({
       data: {

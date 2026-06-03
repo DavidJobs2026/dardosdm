@@ -213,9 +213,16 @@ export default function TorneosPage() {
               try {
                 const { data: pData } = await api.get(`/tournaments/${t.id}/participants`);
                 const participants = pData.data as any[];
-                const mine = participants.find((p: any) => p.user?.id === user.id || p.userId === user.id);
+                const mine = participants.find((p: any) =>
+                  p.user?.id === user.id ||
+                  p.userId  === user.id  ||
+                  // organizer may have inscribed via historico (linked by DNI, no userId yet)
+                  (user.dni && p.dni && p.dni.toUpperCase() === user.dni.toUpperCase())
+                );
                 if (mine) {
-                  return { ...t, _inscriptionStatus: (mine.inscriptionStatus === "confirmed" ? "confirmed" : "pending") as "confirmed" | "pending" };
+                  const status = mine.inscriptionStatus;
+                  const mapped = status === "confirmed" ? "confirmed" : "pending";
+                  return { ...t, _inscriptionStatus: mapped as "confirmed" | "pending" };
                 }
               } catch {
                 // ignore errors for participant fetch
