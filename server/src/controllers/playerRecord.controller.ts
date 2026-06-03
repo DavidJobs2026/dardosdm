@@ -271,8 +271,9 @@ function avgOf(nums: (number | null | undefined)[]): number | null {
 
 export const searchForInscription = async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
-    const q        = String(req.query.q        || "").trim();
-    const gameType = String(req.query.gameType || "").trim();
+    const q               = String(req.query.q               || "").trim();
+    const gameType        = String(req.query.gameType        || "").trim();
+    const preferredSeason = String(req.query.preferredSeason || "").trim() || null;
 
     if (!q || q.length < 2) return res.json({ data: [] });
 
@@ -348,17 +349,38 @@ export const searchForInscription = async (req: AuthRequest, res: Response, next
       byPlayer[key].combos.push(r.combined);
     }
 
-    const result = Object.values(byPlayer).slice(0, 20).map(p => ({
-      name:        p.name,
-      dni:         p.dni,
-      cardNumber:  p.cardNumber,
-      teamName:    p.teamName,
-      provincia:   p.provincia,
-      seasons:     p.seasons,
-      avgPpd:      avgOf(p.ppds),
-      avgMpr:      avgOf(p.mprs),
-      avgCombined: avgOf(p.combos),
-    }));
+    const result = Object.values(byPlayer).slice(0, 20).map(p => {
+      // When a preferred season is configured, use that season's values as the
+      // "historical" metric so "Histórica" in the UI reflects the right number.
+      // Fall back to most recent season if the preferred one isn't present.
+      let avgPpd: number | null;
+      let avgMpr: number | null;
+      let avgCombined: number | null;
+
+      if (preferredSeason) {
+        const prefSeason = p.seasons.find(s => s.season === preferredSeason);
+        const source     = prefSeason ?? p.seasons[0]; // seasons already sorted desc
+        avgPpd      = source?.ppd      ?? null;
+        avgMpr      = source?.mpr      ?? null;
+        avgCombined = source?.combined ?? null;
+      } else {
+        avgPpd      = avgOf(p.ppds);
+        avgMpr      = avgOf(p.mprs);
+        avgCombined = avgOf(p.combos);
+      }
+
+      return {
+        name:        p.name,
+        dni:         p.dni,
+        cardNumber:  p.cardNumber,
+        teamName:    p.teamName,
+        provincia:   p.provincia,
+        seasons:     p.seasons,
+        avgPpd,
+        avgMpr,
+        avgCombined,
+      };
+    });
 
     return res.json({ data: result });
   } catch (err) {

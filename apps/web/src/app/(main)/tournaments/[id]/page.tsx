@@ -2338,6 +2338,7 @@ export default function TournamentDetailPage({ params }: { params: Promise<{ id:
                     gameType={tournament.gameType ?? undefined}
                     metric={tournament.metric ?? undefined}
                     maxMetric={effectiveMax}
+                    preferredSeason={(tournament as any).preferredSeason ?? null}
                     teamSize={tournament.teamSize ?? null}
                     teamSizeMin={tournament.teamSizeMin ?? null}
                     metricPlayers={tournament.metricPlayers ?? null}

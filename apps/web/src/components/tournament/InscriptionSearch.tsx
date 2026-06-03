@@ -48,6 +48,7 @@ interface Props {
   gameType?:         string;
   metric?:           string;
   maxMetric?:        number | null;
+  preferredSeason?:  string | null;
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -135,15 +136,20 @@ function SeasonChip({
 // ─── Player result card ───────────────────────────────────────────────────────
 
 function PlayerCard({
-  player, metric, alreadyInscribed, loading, onInscribe,
+  player, metric, preferredSeason, alreadyInscribed, loading, onInscribe,
 }: {
   player:           HistoricoPlayer;
   metric?:          string;
+  preferredSeason?: string | null;
   alreadyInscribed: boolean;
   loading:          boolean;
   onInscribe:       (player: HistoricoPlayer, selectedStat: SeasonStat | null) => void;
 }) {
-  const [selectedIdx, setSelectedIdx] = useState<number | null>(null); // null = histórica
+  // Auto-select the preferred season chip if configured; null = use "Histórica" (avg or preferred value from server)
+  const defaultIdx = preferredSeason
+    ? player.seasons.findIndex(s => s.season === preferredSeason)
+    : -1;
+  const [selectedIdx, setSelectedIdx] = useState<number | null>(defaultIdx >= 0 ? defaultIdx : null);
 
   const lbl         = primaryLabel(metric);
   const histVal     = primaryValue(player, metric);
@@ -445,6 +451,7 @@ export function InscriptionSearch({
   gameType,
   metric,
   maxMetric,
+  preferredSeason,
 }: Props) {
   const [query, setQuery]         = useState("");
   const [results, setResults]     = useState<HistoricoPlayer[]>([]);
@@ -472,7 +479,11 @@ export function InscriptionSearch({
     debounceRef.current = setTimeout(async () => {
       try {
         const { data } = await api.get("/player-records/search-for-inscription", {
-          params: { q, ...(gameType ? { gameType } : {}) },
+          params: {
+            q,
+            ...(gameType        ? { gameType }        : {}),
+            ...(preferredSeason ? { preferredSeason } : {}),
+          },
         });
         setResults(data.data);
       } catch {
@@ -604,6 +615,7 @@ export function InscriptionSearch({
                   key={key}
                   player={player}
                   metric={metric}
+                  preferredSeason={preferredSeason}
                   alreadyInscribed={alreadyInscribed}
                   loading={isLoading}
                   onInscribe={(p, stat) => openConfirm(p, stat)}

@@ -60,6 +60,7 @@ interface Props {
   gameType?:         string;
   metric?:           string;
   maxMetric?:        number | null;
+  preferredSeason?:  string | null;
   teamSize?:         number | null;
   teamSizeMin?:      number | null;
   metricPlayers?:    number | null;
@@ -1055,7 +1056,7 @@ function BlindPairButton({ tournamentId, onDone }: { tournamentId: string; onDon
 
 export function InscriptionPanel({
   tournamentId, participantType, maxParticipants, currentCount,
-  registeredUserIds, onInscribed, gameType, metric, maxMetric, teamSize, teamSizeMin, metricPlayers, levels,
+  registeredUserIds, onInscribed, gameType, metric, maxMetric, preferredSeason, teamSize, teamSizeMin, metricPlayers, levels,
 }: Props) {
   const isFull = maxParticipants > 0 && currentCount >= maxParticipants;
 
@@ -1122,7 +1123,8 @@ export function InscriptionPanel({
           <InscriptionSearch tournamentId={tournamentId} participantType={participantType}
             maxParticipants={maxParticipants} currentCount={currentCount}
             registeredUserIds={registeredUserIds} onInscribed={onInscribed}
-            gameType={gameType} metric={metric} maxMetric={maxMetric} />
+            gameType={gameType} metric={metric} maxMetric={maxMetric}
+            preferredSeason={preferredSeason} />
         )}
         {tab === "manual" && showIndiv && (
           <ManualTab tournamentId={tournamentId} isFull={isFull} onInscribed={onInscribed}
