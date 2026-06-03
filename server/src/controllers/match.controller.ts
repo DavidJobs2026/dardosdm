@@ -407,28 +407,33 @@ async function dropToLosers(
     lbRound    = 1;
     lbPosition = Math.floor(wbPosition / 2);
     isSlot1    = wbPosition % 2 === 0;
-  } else {
-    // WB Rk (k≥2) losers drop into LB R(2k-2) cross-seeded to prevent rematches.
-    // Within each group of 2^(k-1) positions, the drop position is mirrored so
-    // the WB loser faces someone from the opposite half of the bracket.
-    // e.g. WB R2 (groupSize=2): pos 0→lbPos 1, pos 1→lbPos 0
-    //      WB R3 (groupSize=4): pos 0→3, 1→2, 2→1, 3→0
-    lbRound = 2 * (wbRound - 1);
-    const groupSize  = Math.pow(2, wbRound - 1);
-    const groupStart = Math.floor(wbPosition / groupSize) * groupSize;
-    lbPosition = groupStart + (groupSize - 1 - (wbPosition % groupSize));
-    isSlot1    = false;
+
+    const lbMatch = await prisma.match.findFirst({
+      where: { tournamentId, bracketLevel, round: lbRound, position: lbPosition, bracketSide: "losers" },
+    });
+    if (!lbMatch) return;
+    await prisma.match.update({ where: { id: lbMatch.id }, data: { participant2Id: loserId } });
+    return;
   }
 
-  const lbMatch = await prisma.match.findFirst({
-    where: { tournamentId, bracketLevel, round: lbRound, position: lbPosition, bracketSide: "losers" },
-  });
-  if (!lbMatch) return;
+  // WB Rk (k≥2): drop into LB R(2k-2) cross-seeded in pairs to prevent rematches.
+  // Rule: always mirror within adjacent pairs — pos 0↔1, 2↔3, etc.
+  // If the mirrored LB slot doesn't exist (WB Final = single match), fall back
+  // to the same position so the loser still gets placed correctly.
+  lbRound = 2 * (wbRound - 1);
+  const mirroredPos = wbPosition % 2 === 0 ? wbPosition + 1 : wbPosition - 1;
 
-  await prisma.match.update({
-    where: { id: lbMatch.id },
-    data: isSlot1 ? { participant1Id: loserId } : { participant2Id: loserId },
+  let lbMatch = await prisma.match.findFirst({
+    where: { tournamentId, bracketLevel, round: lbRound, position: mirroredPos, bracketSide: "losers" },
   });
+  // Fallback: WB Final has only 1 match (pos 0), mirrored pos 1 doesn't exist
+  if (!lbMatch) {
+    lbMatch = await prisma.match.findFirst({
+      where: { tournamentId, bracketLevel, round: lbRound, position: wbPosition, bracketSide: "losers" },
+    });
+  }
+  if (!lbMatch) return;
+  await prisma.match.update({ where: { id: lbMatch.id }, data: { participant2Id: loserId } });
 }
 
 /** Advance an LB winner through LB rounds, or into the Grand Final as participant2. */
