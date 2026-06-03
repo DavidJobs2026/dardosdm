@@ -77,34 +77,52 @@ export const listTournaments = async (req: AuthRequest, res: Response, next: Nex
     // Players only see published tournaments; organizers/admins see everything
     const isPlayer = req.user?.role === "player";
 
-    const where = {
-      ...(isPlayer ? { isPublic: true } : {}),
+    const buildWhere = (withPublic: boolean) => ({
+      ...(withPublic && isPlayer ? { isPublic: true } : {}),
       ...(rawStatus && VALID_STATUSES.includes(rawStatus) ? { status: rawStatus as any } : {}),
       ...(rawFormat && VALID_FORMATS.includes(rawFormat)  ? { format: rawFormat as any } : {}),
+    });
+
+    const runQuery = async (withPublic: boolean) => {
+      const where = buildWhere(withPublic);
+      return Promise.all([
+        prisma.tournament.findMany({
+          where,
+          skip,
+          take: limit,
+          orderBy: { createdAt: "desc" },
+          include: {
+            organizer: { select: selectOrganizer },
+            _count: { select: { participants: true } },
+          },
+        }),
+        prisma.tournament.count({ where }),
+      ]);
     };
 
-    const [tournaments, total] = await Promise.all([
-      prisma.tournament.findMany({
-        where,
-        skip,
-        take: Number(limit),
-        orderBy: { createdAt: "desc" },
-        include: {
-          organizer: { select: selectOrganizer },
-          _count: { select: { participants: true } },
-        },
-      }),
-      prisma.tournament.count({ where }),
-    ]);
+    let tournaments: any[];
+    let total: number;
 
-    const data = tournaments.map((t: typeof tournaments[number]) => ({
+    try {
+      [tournaments, total] = await runQuery(true);
+    } catch (colErr: any) {
+      // DB migration pending — is_public column doesn't exist yet; fall back gracefully
+      if (String(colErr?.message).includes("is_public") || colErr?.code === "P2022") {
+        console.warn("[tournaments] is_public column missing — run DB migration. Falling back to unfiltered.");
+        [tournaments, total] = await runQuery(false);
+      } else {
+        throw colErr;
+      }
+    }
+
+    const data = tournaments.map((t: any) => ({
       ...t,
       createdBy: t.createdById,
       participantsCount: t._count.participants,
       _count: undefined,
     }));
 
-    return res.json({ data, total, page: Number(page), limit: Number(limit), totalPages: Math.ceil(total / Number(limit)) });
+    return res.json({ data, total, page, limit, totalPages: Math.ceil(total / limit) });
   } catch (err) {
     next(err);
   }
@@ -123,7 +141,8 @@ export const getTournament = async (req: AuthRequest, res: Response, next: NextF
     if (!tournament) return next(notFound("Tournament"));
 
     // Players can only view published tournaments via direct URL
-    if (req.user?.role === "player" && !tournament.isPublic) {
+    // (isPublic may be null/undefined if the DB migration hasn't run yet — treat as public)
+    if (req.user?.role === "player" && tournament.isPublic === false) {
       return next(notFound("Tournament"));
     }
 
