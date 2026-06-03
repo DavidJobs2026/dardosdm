@@ -111,13 +111,18 @@ function computeRouting(
           ]);
         }
       } else {
-        // LB R2, R4, R6…: LB prev-round winner (pos mi) + WB drop-in loser (pos mi)
+        // LB R2, R4, R6…: LB prev-round winner (pos mi) + WB drop-in loser (cross-seeded)
         // LB R(2k) drops from WB R(k+1) → wbRegular index k
-        const k            = r / 2;
-        const wbDropRound  = wbRegular[k]; // WB R(k+1)
-        const prevLB       = lbRounds[li - 1];
-        const lbSrc        = prevLB?.matches[mi];
-        const wbSrc        = wbDropRound?.matches[mi];
+        // Cross-seeding: mirror within groups of 2^(wbRound-1) to prevent rematches
+        const k           = r / 2;
+        const wbDropRound = wbRegular[k]; // WB R(k+1)
+        const wbRound     = k + 1;
+        const groupSize   = Math.pow(2, wbRound - 1);
+        const groupStart  = Math.floor(mi / groupSize) * groupSize;
+        const wbPos       = groupStart + (groupSize - 1 - (mi % groupSize));
+        const prevLB      = lbRounds[li - 1];
+        const lbSrc       = prevLB?.matches[mi];
+        const wbSrc       = wbDropRound?.matches[wbPos];
         map.set(m.id, [
           lbSrc ? `Ganador de ${nums.get(lbSrc.id)}` : "TBD",
           wbSrc ? `Perdedor de ${nums.get(wbSrc.id)}` : "TBD",
