@@ -159,7 +159,11 @@ export default function RegistroPage() {
 
   const handlePhoneBlur = async () => {
     const trimmed = phone.trim().replace(/\s/g, "");
-    if (!trimmed || !/^[67]\d{8}$/.test(trimmed)) return;
+    if (!trimmed) return;
+    if (!/^[67]\d{8}$/.test(trimmed)) {
+      setPhoneError("9 dígitos, debe comenzar por 6 o 7 (ej: 612345678)");
+      return;
+    }
     try {
       const { data } = await api.get(`/auth/check-phone?phone=${encodeURIComponent(trimmed)}`);
       setPhoneError(data.data.inUse ? "Este teléfono ya está asociado a otra cuenta." : "");
@@ -197,12 +201,18 @@ export default function RegistroPage() {
       toast.error("Corrige el email antes de continuar");
       return;
     }
-    if (phoneError) {
-      toast.error("Corrige el teléfono antes de continuar");
+    const phoneTrimmed = phone.trim().replace(/\s/g, "");
+    if (!phoneTrimmed) {
+      toast.error("El teléfono móvil es obligatorio");
       return;
     }
-    if (phone && !/^[67]\d{8}$/.test(phone.replace(/\s/g, ""))) {
-      toast.error("El teléfono debe tener 9 dígitos y comenzar por 6 o 7");
+    if (!/^[67]\d{8}$/.test(phoneTrimmed)) {
+      setPhoneError("9 dígitos, debe comenzar por 6 o 7 (ej: 612345678)");
+      toast.error("El teléfono no es válido");
+      return;
+    }
+    if (phoneError) {
+      toast.error("Corrige el teléfono antes de continuar");
       return;
     }
     if (password.length < 8) {
@@ -416,7 +426,7 @@ export default function RegistroPage() {
 
               <div>
                 <label className="block text-xs font-semibold text-ink-400 mb-1.5 uppercase tracking-wider">
-                  Teléfono móvil <span className="text-ink-600 font-normal normal-case">(WhatsApp · opcional)</span>
+                  Teléfono móvil <span className="text-red-400 text-xs font-bold ml-1">*</span>
                 </label>
                 <input
                   value={phone}
@@ -429,7 +439,7 @@ export default function RegistroPage() {
                 />
                 {phoneError
                   ? <p className="text-red-400 text-xs mt-1.5 flex items-center gap-1.5"><span>⚠</span> {phoneError}</p>
-                  : <p className="text-ink-600 text-xs mt-1">9 dígitos, comenzando por 6 o 7</p>
+                  : <p className="text-ink-600 text-xs mt-1">Obligatorio · 9 dígitos, comenzando por 6 o 7</p>
                 }
               </div>
 

@@ -53,7 +53,11 @@ const registerSchema = z.object({
   role:            z.enum(["organizer", "player"]).optional().default("player"),
   // Player-specific fields (optional for organizer/admin)
   dni:             z.string().optional(),
-  phone:           z.string().optional(),
+  // Players must provide a valid Spanish mobile number (9 digits, starts with 6 or 7)
+  phone:           z.string()
+                     .regex(/^[67]\d{8}$/, "El teléfono debe tener 9 dígitos y comenzar por 6 o 7")
+                     .optional()
+                     .or(z.literal("")),
   province:        z.string().optional(),
   birthDate:       z.string().optional(),
   gdprConsent:     z.boolean().optional().default(false),
