@@ -75,18 +75,28 @@ const loginSchema = z.object({
 export const checkDni = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const dni = String(req.query.dni || "").trim().toUpperCase();
-    if (!dni) return res.json({ data: { found: false } });
+    if (!dni) return res.json({ data: { found: false, alreadyRegistered: false } });
 
-    const record = await prisma.playerRecord.findFirst({
-      where: { dni: { equals: dni, mode: "insensitive" } },
-      orderBy: { createdAt: "desc" },
-      select: { name: true, teamName: true, provincia: true, cardNumber: true, ppd: true, mpr: true, combined: true },
-    });
+    // Check in parallel: historico record + existing user account
+    const [record, existingUser] = await Promise.all([
+      prisma.playerRecord.findFirst({
+        where: { dni: { equals: dni, mode: "insensitive" } },
+        orderBy: { createdAt: "desc" },
+        select: { name: true, teamName: true, provincia: true, cardNumber: true },
+      }),
+      prisma.user.findFirst({
+        where: { dni: { equals: dni, mode: "insensitive" } },
+        select: { id: true },
+      }),
+    ]);
 
-    if (record) {
-      return res.json({ data: { found: true, name: record.name, teamName: record.teamName, provincia: record.provincia, cardNumber: record.cardNumber } });
+    if (existingUser) {
+      return res.json({ data: { found: !!record, alreadyRegistered: true, name: record?.name, teamName: record?.teamName, provincia: record?.provincia, cardNumber: record?.cardNumber } });
     }
-    return res.json({ data: { found: false } });
+    if (record) {
+      return res.json({ data: { found: true, alreadyRegistered: false, name: record.name, teamName: record.teamName, provincia: record.provincia, cardNumber: record.cardNumber } });
+    }
+    return res.json({ data: { found: false, alreadyRegistered: false } });
   } catch (err) { next(err); }
 };
 

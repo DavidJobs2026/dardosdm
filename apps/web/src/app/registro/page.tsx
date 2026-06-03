@@ -84,7 +84,7 @@ export default function RegistroPage() {
   // Step 1 — DNI
   const [dni, setDni] = useState("");
   const [dniError, setDniError] = useState("");
-  const [dniResult, setDniResult] = useState<{ found: boolean; name?: string; teamName?: string; provincia?: string; cardNumber?: string } | null>(null);
+  const [dniResult, setDniResult] = useState<{ found: boolean; alreadyRegistered?: boolean; name?: string; teamName?: string; provincia?: string; cardNumber?: string } | null>(null);
   const [checkingDni, setCheckingDni] = useState(false);
 
   // Step 2 — Personal data
@@ -109,32 +109,33 @@ export default function RegistroPage() {
   const [submitting, setSubmitting] = useState(false);
 
   // ─── Step 1 — DNI check ─────────────────────────────────────────────────────
-  const handleCheckDni = async () => {
+  type DniResult = { found: boolean; alreadyRegistered?: boolean; name?: string; teamName?: string; provincia?: string; cardNumber?: string };
+
+  const handleCheckDni = async (): Promise<DniResult | null> => {
     const trimmed = dni.trim().toUpperCase();
-    if (!trimmed) return;
+    if (!trimmed) return null;
 
     if (!validateDni(trimmed)) {
       setDniError("DNI/NIE inválido — revisa el número y la letra");
       setDniResult(null);
-      return;
+      return null;
     }
     setDniError("");
     setCheckingDni(true);
     try {
       const { data } = await api.get(`/auth/check-dni?dni=${encodeURIComponent(trimmed)}`);
-      setDniResult(data.data);
-      if (data.data.found && data.data.name) {
-        setName(data.data.name.toUpperCase());
-      }
-      if (data.data.found && data.data.provincia) {
-        const matched = PROVINCES.find(p => p.toLowerCase() === data.data.provincia?.toLowerCase());
+      const result: DniResult = data.data;
+      setDniResult(result);
+      if (result.found && result.name) setName(result.name.toUpperCase());
+      if (result.found && result.provincia) {
+        const matched = PROVINCES.find(p => p.toLowerCase() === result.provincia?.toLowerCase());
         if (matched) setProvince(matched);
       }
-      if (data.data.found && data.data.cardNumber) {
-        setLigaCard(data.data.cardNumber);
-      }
+      if (result.found && result.cardNumber) setLigaCard(result.cardNumber);
+      return result;
     } catch {
       setDniResult({ found: false });
+      return null;
     } finally {
       setCheckingDni(false);
     }
@@ -142,17 +143,16 @@ export default function RegistroPage() {
 
   const handleStep1Continue = async () => {
     const trimmed = dni.trim().toUpperCase();
-    if (!trimmed) {
-      setDniError("El DNI/NIE es obligatorio");
-      return;
-    }
-    if (!validateDni(trimmed)) {
-      setDniError("DNI/NIE inválido — revisa el número y la letra");
-      return;
-    }
+    if (!trimmed) { setDniError("El DNI/NIE es obligatorio"); return; }
+    if (!validateDni(trimmed)) { setDniError("DNI/NIE inválido — revisa el número y la letra"); return; }
     setDniError("");
-    if (!dniResult) {
-      await handleCheckDni();
+
+    // Use cached result or fetch fresh
+    const result = dniResult ?? await handleCheckDni();
+
+    if (result?.alreadyRegistered) {
+      setDniError("Este DNI ya tiene una cuenta registrada. ¿Quieres iniciar sesión?");
+      return;
     }
     setStep(2);
   };
@@ -340,7 +340,23 @@ export default function RegistroPage() {
 
               {/* DNI result */}
               {!dniError && dniResult && (
-                dniResult.found ? (
+                dniResult.alreadyRegistered ? (
+                  // Already has an account — block registration
+                  <div className="flex items-start gap-3 p-4 bg-red-900/20 border border-red-700/50 rounded-xl">
+                    <span className="text-red-400 text-lg shrink-0 mt-0.5">⚠</span>
+                    <div>
+                      <p className="text-red-300 font-semibold text-sm">Este DNI ya tiene una cuenta</p>
+                      <p className="text-red-400/80 text-xs mt-0.5 leading-relaxed">
+                        Ya existe una cuenta registrada con este DNI.{" "}
+                        <Link href="/auth/login" className="underline hover:text-red-300 transition-colors font-semibold">
+                          Inicia sesión
+                        </Link>{" "}
+                        o usa el enlace de recuperación de contraseña si no recuerdas el acceso.
+                      </p>
+                    </div>
+                  </div>
+                ) : dniResult.found ? (
+                  // Found in historico, not yet registered
                   <div className="flex items-start gap-3 p-4 bg-green-900/20 border border-green-700/50 rounded-xl">
                     <Check className="w-5 h-5 text-green-400 shrink-0 mt-0.5" />
                     <div>
@@ -354,6 +370,7 @@ export default function RegistroPage() {
                     </div>
                   </div>
                 ) : (
+                  // Not in historico, not registered
                   <div className="flex items-start gap-3 p-4 bg-ink-800/60 border border-ink-700 rounded-xl">
                     <div className="w-5 h-5 rounded-full bg-ink-700 flex items-center justify-center shrink-0 mt-0.5">
                       <span className="text-ink-400 text-xs font-bold">i</span>
@@ -372,8 +389,8 @@ export default function RegistroPage() {
 
               <button
                 onClick={handleStep1Continue}
-                disabled={checkingDni}
-                className="btn-primary w-full py-3 text-base shadow-red-glow flex items-center justify-center gap-2"
+                disabled={checkingDni || !!dniResult?.alreadyRegistered}
+                className="btn-primary w-full py-3 text-base shadow-red-glow flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {checkingDni ? <Loader2 className="w-4 h-4 animate-spin" /> : <>Continuar <ChevronRight className="w-4 h-4" /></>}
               </button>
