@@ -2563,7 +2563,7 @@ export default function TournamentDetailPage({ params }: { params: Promise<{ id:
                     Media del jugador
                     {approvingInsc.historicMetric?.value != null && (
                       <span className="ml-2 text-amber-400 normal-case font-normal">
-                        Historial: COMB {approvingInsc.historicMetric.value.toFixed(2)}
+                        {approvingInsc.historicMetric.season ?? "Historial"}: COMB {approvingInsc.historicMetric.value.toFixed(2)}
                         {approvingInsc.historicMetric.level ? ` · ${approvingInsc.historicMetric.level}` : ""}
                       </span>
                     )}
@@ -2608,7 +2608,7 @@ export default function TournamentDetailPage({ params }: { params: Promise<{ id:
                     Media del jugador
                     {approvingInsc.historicMetric?.value != null && (
                       <span className="ml-2 text-amber-400 normal-case font-normal">
-                        Historial: {approvingInsc.historicMetric.metricKey?.toUpperCase()} {approvingInsc.historicMetric.value.toFixed(2)}
+                        {approvingInsc.historicMetric.season ?? "Historial"}: {approvingInsc.historicMetric.metricKey?.toUpperCase()} {approvingInsc.historicMetric.value.toFixed(2)}
                         {approvingInsc.historicMetric.level ? ` · ${approvingInsc.historicMetric.level}` : ""}
                       </span>
                     )}
