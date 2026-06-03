@@ -8,6 +8,16 @@ import { notFound, forbidden, badRequest } from "../utils/errors";
 import { generateBracket, generateRoundRobin, generateSingleElimination, computeRRStandings } from "../services/bracket.service";
 import { sendInscriptionPending, sendInscriptionApproved } from "../lib/email";
 import { audit } from "../lib/audit";
+import { Server as SocketServer } from "socket.io";
+
+// Module-level socket server — set once by routes during init
+let _io: SocketServer | null = null;
+export function setSocketServer(io: SocketServer) { _io = io; }
+
+/** Emit tournament:updated to all clients watching this tournament room */
+function emitTournamentUpdated(tournamentId: string, data: object) {
+  _io?.to(`tournament:${tournamentId}`).emit("tournament:updated", { tournamentId, ...data });
+}
 
 // Valid odd match lengths — global and per-level
 const GLOBAL_BEST_OF = [1, 3, 5, 7] as const;
@@ -601,6 +611,7 @@ export const startTournament = async (req: AuthRequest, res: Response, next: Nex
       }
     }
 
+    emitTournamentUpdated(tournament.id, { status: "in_progress" });
     audit({ req, action: "tournament.start", entityType: "tournament", entityId: tournament.id, entityName: tournament.name });
     return res.json({ data: null, message: "Tournament started" });
   } catch (err) {
@@ -717,6 +728,7 @@ export const finalizeTournament = async (req: AuthRequest, res: Response, next: 
     }
 
     await prisma.tournament.update({ where: { id: tournament.id }, data: { status: "completed" } });
+    emitTournamentUpdated(tournament.id, { status: "completed" });
     audit({ req, action: "tournament.finalize", entityType: "tournament", entityId: tournament.id, entityName: tournament.name });
     return res.json({ data: null, message: "Tournament finalized" });
   } catch (err) {
@@ -856,6 +868,7 @@ export const openRegistration = async (req: AuthRequest, res: Response, next: Ne
       return next(badRequest("Only draft tournaments can be opened for registration"));
     }
     await prisma.tournament.update({ where: { id: tournament.id }, data: { status: "registration" } });
+    emitTournamentUpdated(tournament.id, { status: "registration" });
     audit({ req, action: "tournament.open_registration", entityType: "tournament", entityId: tournament.id, entityName: tournament.name });
     return res.json({ data: null, message: "Registration opened" });
   } catch (err) {

@@ -6,6 +6,7 @@ import {
   finalizeTournament, openRegistration, resetTournament, resetLevel, recalculateMetrics,
   getRRStandings, approveGroup, unapproveGroup, launchKO, resetKO, createTiebreakerMatch, reportTiebreakerResult, resetRRGroup,
   playerInscribe, getPendingInscriptions, resolveInscription,
+  setSocketServer,
   // image handled separately (multer middleware)
 } from "../controllers/tournament.controller";
 import {
@@ -20,6 +21,7 @@ import { uploadTournamentImage, removeTournamentImage } from "../controllers/tou
 
 export default function tournamentRoutes(io: SocketServer): Router {
   const router = Router();
+  setSocketServer(io); // allow tournament controller to emit lifecycle events
 
   // Tournaments
   router.get("/", listTournaments);

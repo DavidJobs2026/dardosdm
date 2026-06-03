@@ -1393,7 +1393,7 @@ export default function TournamentDetailPage({ params }: { params: Promise<{ id:
   const [launchMatch, setLaunchMatch] = useState<Match | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const { connected, onMatchUpdated } = useSocket(id);
+  const { connected, onMatchUpdated, onTournamentUpdated } = useSocket(id);
   const router = useRouter();
 
   const isOrganizer = user && tournament && (user.id === tournament.createdBy || user.role === "admin" || user.role === "organizer");
@@ -1444,6 +1444,21 @@ export default function TournamentDetailPage({ params }: { params: Promise<{ id:
     });
     return unsub;
   }, [onMatchUpdated, id]);
+
+  // Tournament lifecycle events (start, finalize, open registration) — reload all data
+  useEffect(() => {
+    const unsub = onTournamentUpdated(() => { loadData(); });
+    return unsub;
+  }, [onTournamentUpdated, loadData]);
+
+  // Polling fallback: if socket is disconnected, poll every 15s when tournament
+  // is active so the bracket appears without a manual page reload
+  useEffect(() => {
+    if (!tournament) return;
+    if (tournament.status !== "registration" && tournament.status !== "in_progress") return;
+    const interval = setInterval(() => { loadData(); }, 15_000);
+    return () => clearInterval(interval);
+  }, [tournament?.status, loadData]);
 
   // Organizer actions
   const handleOpenRegistration = async () => {

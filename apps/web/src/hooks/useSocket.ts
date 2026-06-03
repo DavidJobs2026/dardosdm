@@ -36,5 +36,11 @@ export function useSocket(tournamentId: string) {
     return () => { socketRef.current?.off("match:updated", cb); };
   };
 
-  return { connected, onMatchUpdated };
+  /** Fires when the tournament status changes (start, finalize, open registration) */
+  const onTournamentUpdated = (cb: (data: any) => void) => {
+    socketRef.current?.on("tournament:updated", cb);
+    return () => { socketRef.current?.off("tournament:updated", cb); };
+  };
+
+  return { connected, onMatchUpdated, onTournamentUpdated };
 }
