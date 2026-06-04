@@ -415,7 +415,13 @@ function MatchRow({ match, dianas, tournament, onDataChange, onReport, overdue }
                   {showSelect && (
                     <div
                       className="absolute top-full left-0 mt-1 z-30 bg-[#1a1a1a] border border-[#333] rounded-xl shadow-2xl p-2"
-                      style={{ width: 220, maxHeight: 220, overflowY: 'auto' }}
+                      style={{
+                        width: 220,
+                        maxHeight: 220,
+                        overflowY: 'scroll',
+                        overscrollBehavior: 'contain',
+                        WebkitOverflowScrolling: 'touch',
+                      }}
                     >
                       {availableDianas.length === 0 ? (
                         <p className="text-xs text-[#666] px-2 py-1">No hay dianas disponibles</p>
@@ -506,7 +512,14 @@ function DianaGrid({ dianas, onClickDiana, selectMode, selectedIds }: DianaGridP
   if (!hasPositions) {
     // Fallback: scrollable grid — cap at ~280px so 200 dianas don't overflow
     return (
-      <div className="overflow-y-auto max-h-72 pr-1 scrollbar-thin" style={{ scrollbarWidth: 'thin' }}>
+      <div
+        style={{
+          maxHeight: 288,
+          overflowY: 'scroll',
+          overscrollBehavior: 'contain',
+          WebkitOverflowScrolling: 'touch',
+        }}
+      >
       <div className="flex flex-wrap gap-2">
         {dianas.map(d => {
           const occupied  = !!d.matchId;
