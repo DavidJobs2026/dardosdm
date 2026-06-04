@@ -148,9 +148,9 @@ export const addParticipant = async (req: AuthRequest, res: Response, next: Next
 
     // ── maxMetric check ─────────────────────────────────────────────────────────
     // Use the provided metricValue if supplied; otherwise look up from playerRecord by DNI.
-    // This prevents bypassing the limit by simply omitting metricValue in the request.
-    if (tournament.maxMetric != null && tournament.metric) {
-      const metricField = tournament.metric as "ppd" | "mpr" | "combined";
+    // Works even when tournament.metric is null — if maxMetric is set it must be enforced.
+    if (tournament.maxMetric != null) {
+      const metricField = (tournament.metric ?? "mpr") as "ppd" | "mpr" | "combined";
       let effectiveMetric: number | null = metricValue ?? null;
 
       if (effectiveMetric == null && user.dni) {
@@ -164,7 +164,7 @@ export const addParticipant = async (req: AuthRequest, res: Response, next: Next
 
       if (effectiveMetric != null && effectiveMetric > tournament.maxMetric) {
         return next(badRequest(
-          `La media del jugador (${effectiveMetric.toFixed(2)} ${metricField.toUpperCase()}) supera el límite del torneo (${tournament.maxMetric.toFixed(2)})`
+          `La media del jugador (${effectiveMetric.toFixed(2)}) supera el límite del torneo (${tournament.maxMetric.toFixed(2)})`
         ));
       }
     }

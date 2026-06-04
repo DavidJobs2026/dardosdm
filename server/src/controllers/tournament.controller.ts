@@ -1393,12 +1393,12 @@ export const playerInscribe = async (req: AuthRequest, res: Response, next: Next
     }
 
     // Check maxMetric — look up the player's stored metric from their participant history or playerRecord
-    if (tournament.maxMetric != null && tournament.metric) {
+    if (tournament.maxMetric != null) {
       const player = await prisma.user.findUnique({
         where: { id: req.user!.userId },
         select: { dni: true },
       });
-      const metricField = tournament.metric as "ppd" | "mpr" | "combined";
+      const metricField = (tournament.metric ?? "mpr") as "ppd" | "mpr" | "combined";
       let playerMetric: number | null = null;
 
       if (player?.dni) {
@@ -1412,7 +1412,7 @@ export const playerInscribe = async (req: AuthRequest, res: Response, next: Next
 
       if (playerMetric != null && playerMetric > tournament.maxMetric) {
         return next(badRequest(
-          `Tu media (${playerMetric.toFixed(2)} ${metricField.toUpperCase()}) supera el límite de este torneo (${tournament.maxMetric.toFixed(2)})`
+          `Tu media (${playerMetric.toFixed(2)}) supera el límite de este torneo (${tournament.maxMetric.toFixed(2)})`
         ));
       }
     }

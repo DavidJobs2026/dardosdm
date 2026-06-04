@@ -194,9 +194,10 @@ export const batchCreateUsers = async (req: AuthRequest, res: Response, next: Ne
           const notFull = tournament.maxParticipants === 0 || currentParticipantCount < tournament.maxParticipants;
 
           // maxMetric check — block inscription if player exceeds the tournament metric limit
+          // Works even when tournament.metric is null (limit set without selecting a game type)
           let aboveLimit = false;
-          if (tournament.maxMetric != null && tournament.metric) {
-            const metricField = tournament.metric as "ppd" | "mpr" | "combined";
+          if (tournament.maxMetric != null) {
+            const metricField = (tournament.metric ?? "mpr") as "ppd" | "mpr" | "combined";
             const effectiveMetric = p.metricValue
               ?? (p.mpr != null || p.ppd != null
                 ? (metricField === "mpr" ? p.mpr : metricField === "ppd" ? p.ppd : ((p.mpr ?? 0) * 10) + (p.ppd ?? 0))
