@@ -1,10 +1,6 @@
 import { Router, IRouter } from "express";
 import { authenticate, requireRole } from "../middlewares/auth.middleware";
-import { exec } from "child_process";
-import { promisify } from "util";
-import { runBackup } from "../lib/backup";
-
-const execAsync = promisify(exec);
+import { runBackup, createBackupJson } from "../lib/backup";
 const router: IRouter = Router();
 
 let lastBackupAt: string | null = null;
@@ -31,22 +27,15 @@ router.get("/status", authenticate, requireRole("admin"), (_req, res) => {
 });
 
 /**
- * GET /backup/download — stream pg_dump directly to browser (no email)
+ * GET /backup/download — export all tables as JSON and stream to browser
  */
 router.get("/download", authenticate, requireRole("admin"), async (_req, res, next) => {
   try {
-    const dbUrl = process.env.DATABASE_URL;
-    if (!dbUrl) { res.status(500).json({ message: "DATABASE_URL no configurada" }); return; }
-
     const timestamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
-    const { stdout } = await execAsync(
-      `pg_dump --no-password "${dbUrl}"`,
-      { maxBuffer: 100 * 1024 * 1024 }
-    );
-
-    res.setHeader("Content-Type", "application/octet-stream");
-    res.setHeader("Content-Disposition", `attachment; filename="dardosdm-backup-${timestamp}.sql"`);
-    res.send(stdout);
+    const json = await createBackupJson();
+    res.setHeader("Content-Type", "application/json");
+    res.setHeader("Content-Disposition", `attachment; filename="dardosdm-backup-${timestamp}.json"`);
+    res.send(json);
   } catch (err) { next(err); }
 });
 
