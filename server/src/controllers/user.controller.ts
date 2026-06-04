@@ -83,7 +83,7 @@ const batchSchema = z.object({
     level:         z.string().max(50).optional(),
     metricValue:   z.number().optional(),
     gamesPlayed:   z.number().int().optional(),
-    dni:           z.string().max(20).optional(),
+    dni:           z.string().regex(/^[0-9XYZxyz][0-9]{6,7}[A-Za-z]$/, "DNI/NIE inválido").optional(),
     paymentStatus: z.enum(["pending", "paid"]).optional(),
     paymentMethod: z.enum(["cash", "card"]).optional(),
     ppd:           z.number().optional(),
@@ -345,11 +345,15 @@ export const updateUserProfile = async (req: AuthRequest, res: Response, next: N
   try {
     if (req.user!.role === "player") return next(forbidden());
     const body = z.object({
-      name:          z.string().min(2).optional(),
-      email:         z.string().email().optional(),
-      phone:         z.string().optional().nullable(),
+      name:          z.string().min(2).max(100).optional(),
+      email:         z.string().email().max(254).optional(),
+      phone:         z.string().regex(/^[67]\d{8}$/, "Teléfono inválido (9 dígitos, empieza por 6 o 7)").optional().nullable(),
       province:      z.string().optional().nullable(),
-      dni:           z.string().optional().nullable(),
+      // DNI/NIE must match the real format — no fake DNIs allowed
+      dni:           z.string()
+                       .regex(/^[0-9XYZxyz][0-9]{6,7}[A-Za-z]$/, "Formato de DNI/NIE inválido")
+                       .optional()
+                       .nullable(),
       birthDate:     z.string().optional().nullable(),
       ligaCard:      z.string().max(16).optional().nullable(),
       clubCard:      z.string().max(16).optional().nullable(),

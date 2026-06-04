@@ -695,7 +695,8 @@ function EditPlayerModal({ player, onClose, onSaved }: {
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim() || !email.trim()) { toast.error("Nombre y email son obligatorios"); return; }
-    if (dni.trim() && !validateDni(dni.trim())) { toast.error("DNI/NIE inválido — revisa el número y la letra"); return; }
+    if (!dni.trim()) { toast.error("El DNI/NIE es obligatorio"); return; }
+    if (!validateDni(dni.trim())) { toast.error("DNI/NIE inválido — revisa el número y la letra"); return; }
     setSaving(true);
     try {
       const { data } = await api.patch(`/users/${player.id}/profile`, {
