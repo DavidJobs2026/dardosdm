@@ -204,8 +204,10 @@ export const batchCreateUsers = async (req: AuthRequest, res: Response, next: Ne
                 : null);
             if (effectiveMetric != null && effectiveMetric > tournament.maxMetric) {
               aboveLimit = true;
-              results.push({ name: p.name, email: p.email, status: "error",
-                error: `Media (${Number(effectiveMetric).toFixed(2)}) supera el límite del torneo (${tournament.maxMetric.toFixed(2)})` });
+              // IMPORTANT: replace the last "created"/"existing" result with the error
+              // so the frontend (which reads results[0]) sees the rejection, not a false success
+              results[results.length - 1] = { name: p.name, email: p.email, status: "error",
+                error: `Media (${Number(effectiveMetric).toFixed(2)}) supera el límite del torneo (${tournament.maxMetric.toFixed(2)})` };
             }
           }
 
