@@ -413,14 +413,24 @@ async function dropToLosers(
   // Place the WB loser in slot 2
   await prisma.match.update({ where: { id: lbMatch.id }, data: { participant2Id: loserId } });
 
-  // If the LB R1 match feeding into this one was a double-BYE (status=bye, no winner,
-  // slot 1 is empty), auto-advance the WB drop-in — they have no opponent.
-  if (!lbMatch.participant1Id) {
-    await prisma.match.update({
-      where: { id: lbMatch.id },
-      data: { status: "bye", winnerId: loserId },
+  // Auto-advance ONLY when slot 1 is genuinely a double-BYE (the LB consolidation
+  // round match that feeds slot 1 is already marked as status="bye" with NO winner).
+  // This is different from "slot 1 is empty because the path hasn't resolved yet"
+  // — e.g. when the WB Final loser drops into the LB Final, slot 1 is null because
+  // the LB survivor hasn't played through yet. We must NOT auto-advance in that case.
+  if (!lbMatch.participant1Id && lbRound >= 2) {
+    // The consolidation round feeding slot 1 is lbRound-1 at the same position
+    const feederMatch = await prisma.match.findFirst({
+      where: { tournamentId, bracketLevel, round: lbRound - 1, position: lbPosition, bracketSide: "losers" },
     });
-    await advanceLBWinner(tournamentId, lbRound, lbPosition, loserId, bracketLevel);
+    // Only auto-advance if the feeder is explicitly a BYE with no winner (double-BYE)
+    if (feederMatch?.status === "bye" && !feederMatch.winnerId) {
+      await prisma.match.update({
+        where: { id: lbMatch.id },
+        data: { status: "bye", winnerId: loserId },
+      });
+      await advanceLBWinner(tournamentId, lbRound, lbPosition, loserId, bracketLevel);
+    }
   }
 }
 
