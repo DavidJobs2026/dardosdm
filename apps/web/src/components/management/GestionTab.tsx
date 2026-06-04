@@ -413,10 +413,12 @@ function MatchRow({ match, dianas, tournament, onDataChange, onReport, overdue }
                     <ChevronDown className="w-3 h-3" />
                   </button>
                   {showSelect && (
-                    <div className="absolute top-full left-0 mt-1 z-20 bg-[#1a1a1a] border border-[#333] rounded-xl shadow-xl p-2 flex flex-wrap gap-1 max-w-xs">
+                    <div className="absolute top-full left-0 mt-1 z-20 bg-[#1a1a1a] border border-[#333] rounded-xl shadow-xl p-2 max-w-xs">
                       {availableDianas.length === 0 ? (
                         <p className="text-xs text-[#666] px-2 py-1">No hay dianas disponibles</p>
-                      ) : availableDianas.map(d => (
+                      ) : (
+                        <div className="flex flex-wrap gap-1 overflow-y-auto max-h-48">
+                        {availableDianas.map(d => (
                         <button
                           key={d.id}
                           onClick={() => handleAssign(d.number)}
@@ -424,7 +426,9 @@ function MatchRow({ match, dianas, tournament, onDataChange, onReport, overdue }
                         >
                           {d.number}
                         </button>
-                      ))}
+                        ))}
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
@@ -497,8 +501,9 @@ function DianaGrid({ dianas, onClickDiana, selectMode, selectedIds }: DianaGridP
   const hasPositions = dianas.some(d => d.posX != null);
 
   if (!hasPositions) {
-    // Fallback: simple flex-wrap list
+    // Fallback: scrollable grid — cap at ~280px so 200 dianas don't overflow
     return (
+      <div className="overflow-y-auto max-h-72 pr-1 scrollbar-thin" style={{ scrollbarWidth: 'thin' }}>
       <div className="flex flex-wrap gap-2">
         {dianas.map(d => {
           const occupied  = !!d.matchId;
@@ -535,6 +540,7 @@ function DianaGrid({ dianas, onClickDiana, selectMode, selectedIds }: DianaGridP
             </button>
           );
         })}
+      </div>
       </div>
     );
   }
