@@ -367,6 +367,12 @@ function MatchRow({ match, dianas, tournament, onDataChange, onReport, overdue }
         {/* Launch times — always shown when there's any call or a no-show */}
         {(callsDone > 0 || match.noShowAt) && (
           <div className="flex flex-wrap gap-3 text-[11px] text-[#666]">
+            {/* Diana badge — shown alongside call times so it's always visible */}
+            {assignedDiana && (
+              <span className="flex items-center gap-1 px-2 py-0.5 rounded-md bg-red-900/30 border border-red-700/40 text-red-300 font-bold">
+                <Target className="w-3 h-3" /> Diana {assignedDiana.number}
+              </span>
+            )}
             {match.launch1At && <span className="flex items-center gap-1"><Clock className="w-3 h-3" /> 1ª {fmtTime(match.launch1At)}</span>}
             {match.launch2At && <span className="flex items-center gap-1"><Clock className="w-3 h-3" /> 2ª {fmtTime(match.launch2At)}</span>}
             {match.launch3At && <span className="flex items-center gap-1"><Clock className="w-3 h-3" /> 3ª {fmtTime(match.launch3At)}</span>}
