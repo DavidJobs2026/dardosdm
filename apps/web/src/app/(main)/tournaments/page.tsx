@@ -205,12 +205,15 @@ export default function TournamentsPage() {
                       </div>
 
                       <div className="flex items-center justify-between pt-3 border-t border-ink-800">
-                        <div className="flex items-center gap-2">
-                          <div className="w-6 h-6 rounded-md bg-red-900/60 flex items-center justify-center text-xs font-bold text-red-400">
-                            {t.organizer.name[0].toUpperCase()}
+                        {/* Organizer name only visible to admins/organizers, not players */}
+                        {canCreate ? (
+                          <div className="flex items-center gap-2">
+                            <div className="w-6 h-6 rounded-md bg-red-900/60 flex items-center justify-center text-xs font-bold text-red-400">
+                              {t.organizer.name[0].toUpperCase()}
+                            </div>
+                            <span className="text-xs text-ink-400">{t.organizer.name}</span>
                           </div>
-                          <span className="text-xs text-ink-400">{t.organizer.name}</span>
-                        </div>
+                        ) : <span />}
                         {t.startDate && (
                           <span className="flex items-center gap-1 text-xs text-ink-500">
                             <Calendar className="w-3 h-3" />
