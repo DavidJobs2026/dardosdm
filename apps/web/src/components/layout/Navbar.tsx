@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { Trophy, LogOut, LayoutDashboard, Menu, X, Database, Target, MonitorX } from "lucide-react";
+import { Trophy, LogOut, LayoutDashboard, Menu, X, Database, Target, MonitorX, KeyRound, Eye, EyeOff } from "lucide-react";
 import { useAuthStore } from "@/store/auth.store";
 import { clsx } from "clsx";
 import { useRef, useState, useEffect } from "react";
@@ -37,6 +37,30 @@ export function Navbar() {
   }, []);
 
   const versionMismatch = serverCommit && LOCAL_COMMIT !== "local" && serverCommit !== LOCAL_COMMIT;
+
+  // ── Change password modal ────────────────────────────────────────────────────
+  const [showChangePw,   setShowChangePw]   = useState(false);
+  const [currentPw,      setCurrentPw]      = useState("");
+  const [newPw,          setNewPw]          = useState("");
+  const [showCurrentPw,  setShowCurrentPw]  = useState(false);
+  const [showNewPw,      setShowNewPw]      = useState(false);
+  const [savingPw,       setSavingPw]       = useState(false);
+
+  const handleChangePw = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (newPw.length < 8) { toast.error("Mínimo 8 caracteres"); return; }
+    setSavingPw(true);
+    try {
+      await api.patch("/auth/me/password", { currentPassword: currentPw, newPassword: newPw });
+      toast.success("Contraseña actualizada");
+      setShowChangePw(false);
+      setCurrentPw(""); setNewPw("");
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || "Error al cambiar la contraseña");
+    } finally {
+      setSavingPw(false);
+    }
+  };
 
   const handleLogout = async () => {
     await logout();
@@ -141,6 +165,14 @@ export function Navbar() {
                     <div className="absolute right-0 top-full mt-1 w-56 bg-ink-900 border border-ink-700
                                     rounded-xl shadow-xl z-50 overflow-hidden">
                       <button
+                        onClick={() => { setUserMenu(false); setShowChangePw(true); }}
+                        className="flex items-center gap-2.5 w-full px-4 py-3 text-sm text-ink-300
+                                   hover:bg-ink-800 hover:text-white transition-colors text-left">
+                        <KeyRound className="w-4 h-4 text-ink-500" />
+                        Cambiar contraseña
+                      </button>
+                      <div className="border-t border-ink-800" />
+                      <button
                         onClick={() => { setUserMenu(false); handleLogout(); }}
                         className="flex items-center gap-2.5 w-full px-4 py-3 text-sm text-ink-300
                                    hover:bg-ink-800 hover:text-white transition-colors text-left">
@@ -200,6 +232,69 @@ export function Navbar() {
             className="flex items-center gap-2 w-full px-3 py-2.5 rounded-lg text-sm font-medium text-red-400 hover:bg-red-900/20 transition-colors">
             <MonitorX className="w-4 h-4" /> Cerrar todos los dispositivos
           </button>
+        </div>
+      )}
+
+      {/* Change password modal */}
+      {showChangePw && (
+        <div className="fixed inset-0 z-[300] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
+          <div className="w-full max-w-sm bg-ink-900 border border-ink-700 rounded-2xl shadow-2xl overflow-hidden">
+            <div className="flex items-center justify-between px-6 pt-6 pb-4 border-b border-ink-800">
+              <div className="flex items-center gap-2">
+                <KeyRound className="w-5 h-5 text-red-400" />
+                <h2 className="text-white font-bold text-base">Cambiar contraseña</h2>
+              </div>
+              <button onClick={() => { setShowChangePw(false); setCurrentPw(""); setNewPw(""); }}
+                className="text-ink-500 hover:text-white transition-colors">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <form onSubmit={handleChangePw} className="px-6 py-5 space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-ink-400 mb-1.5 uppercase tracking-wide">
+                  Contraseña actual
+                </label>
+                <div className="relative">
+                  <input value={currentPw} onChange={e => setCurrentPw(e.target.value)}
+                    type={showCurrentPw ? "text" : "password"} autoFocus required
+                    className="w-full px-3.5 py-2.5 bg-ink-950 border border-ink-700 rounded-xl text-white
+                               text-sm focus:outline-none focus:border-red-500/60 transition-all pr-10" />
+                  <button type="button" onClick={() => setShowCurrentPw(v => !v)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-ink-500 hover:text-white transition-colors">
+                    {showCurrentPw ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-ink-400 mb-1.5 uppercase tracking-wide">
+                  Nueva contraseña
+                </label>
+                <div className="relative">
+                  <input value={newPw} onChange={e => setNewPw(e.target.value)}
+                    type={showNewPw ? "text" : "password"} required
+                    placeholder="Mín. 8 · mayúscula · número · símbolo"
+                    className="w-full px-3.5 py-2.5 bg-ink-950 border border-ink-700 rounded-xl text-white
+                               text-sm focus:outline-none focus:border-red-500/60 transition-all pr-10 placeholder-ink-600" />
+                  <button type="button" onClick={() => setShowNewPw(v => !v)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-ink-500 hover:text-white transition-colors">
+                    {showNewPw ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+              </div>
+              <div className="flex gap-3 pt-1">
+                <button type="button" onClick={() => { setShowChangePw(false); setCurrentPw(""); setNewPw(""); }}
+                  className="flex-1 py-2.5 rounded-xl border border-ink-700 text-ink-400 text-sm font-semibold
+                             hover:text-white hover:border-ink-500 transition-colors">
+                  Cancelar
+                </button>
+                <button type="submit" disabled={savingPw}
+                  className="flex-1 py-2.5 rounded-xl bg-red-600 hover:bg-red-500 text-white text-sm font-bold
+                             transition-colors disabled:opacity-50">
+                  {savingPw ? "Guardando…" : "Guardar"}
+                </button>
+              </div>
+            </form>
+          </div>
         </div>
       )}
 

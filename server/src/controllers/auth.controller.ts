@@ -577,3 +577,46 @@ export const resetPassword = async (req: Request, res: Response, next: NextFunct
     next(err);
   }
 };
+
+// ─── Change own password (authenticated) ─────────────────────────────────────
+export const changeMyPassword = async (req: AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    const { currentPassword, newPassword } = z.object({
+      currentPassword: z.string().min(1, "Introduce tu contraseña actual"),
+      newPassword:     z.string()
+        .min(8,    "Mínimo 8 caracteres")
+        .max(72,   "Máximo 72 caracteres")
+        .regex(/[A-Z]/, "Debe contener al menos una mayúscula")
+        .regex(/[a-z]/, "Debe contener al menos una minúscula")
+        .regex(/\d/,    "Debe contener al menos un número")
+        .regex(/[^A-Za-z0-9]/, "Debe contener al menos un símbolo"),
+    }).parse(req.body);
+
+    const user = await prisma.user.findUnique({
+      where: { id: req.user!.userId },
+      select: { id: true, email: true, name: true, passwordHash: true },
+    });
+    if (!user) return next(notFound("Usuario"));
+
+    const valid = await bcrypt.compare(currentPassword, user.passwordHash);
+    if (!valid) return next(badRequest("La contraseña actual no es correcta"));
+
+    if (currentPassword === newPassword) {
+      return next(badRequest("La nueva contraseña debe ser diferente a la actual"));
+    }
+
+    const passwordHash = await bcrypt.hash(newPassword, 12);
+
+    await prisma.$transaction([
+      prisma.user.update({ where: { id: user.id }, data: { passwordHash } }),
+      prisma.refreshToken.deleteMany({ where: { userId: user.id } }),
+    ]);
+
+    const ip = (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() || req.socket?.remoteAddress;
+    sendPasswordChangedAlert({ to: user.email, name: user.name, ip }).catch(() => {});
+
+    return res.json({ message: "Contraseña actualizada. Deberás iniciar sesión de nuevo en otros dispositivos." });
+  } catch (err) {
+    next(err);
+  }
+};
