@@ -418,7 +418,7 @@ function sendPushNotification(
 
   for (const userId of userIds) {
     sendPushToUser(userId, { title, body })
-      .then(() => console.log(`[push/diana] ✅ sent to userId=${userId}`))
+      .then(() => console.log(`[push/diana] ✅ dispatched for userId=${userId}`))
       .catch((e) => console.error(`[push/diana] ❌ failed for userId=${userId}:`, e?.message ?? e));
   }
 }
