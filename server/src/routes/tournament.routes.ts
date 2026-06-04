@@ -15,7 +15,7 @@ import {
 } from "../controllers/participant.controller";
 import { listMatches, getMatch, reportResult, repairBracket, resetMatchResult } from "../controllers/match.controller";
 import { listDianas, setupDianas, saveLayout, assignDiana, unassignDiana, deleteDiana, bulkDeleteDianas, toggleBrokenDiana, launchMatch, noShowMatch } from "../controllers/diana.controller";
-import { authenticate, requireRole } from "../middlewares/auth.middleware";
+import { authenticate, requireRole, optionalAuthenticate } from "../middlewares/auth.middleware";
 import { tournamentImageUpload } from "../middlewares/upload.middleware";
 import { uploadTournamentImage, removeTournamentImage } from "../controllers/tournament.controller";
 
@@ -24,8 +24,8 @@ export default function tournamentRoutes(io: SocketServer): Router {
   setSocketServer(io); // allow tournament controller to emit lifecycle events
 
   // Tournaments
-  router.get("/", listTournaments);
-  router.get("/:id", getTournament);
+  router.get("/",    optionalAuthenticate, listTournaments);
+  router.get("/:id", optionalAuthenticate, getTournament);
   router.post("/", authenticate, requireRole("organizer", "admin"), createTournament);
   router.patch("/:id", authenticate, updateTournament);
   router.delete("/:id", authenticate, deleteTournament);
