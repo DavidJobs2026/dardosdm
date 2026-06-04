@@ -413,8 +413,8 @@ async function dropToLosers(
   // Place the WB loser in slot 2
   await prisma.match.update({ where: { id: lbMatch.id }, data: { participant2Id: loserId } });
 
-  // If slot 1 is still empty (the LB R1 match was a double-BYE — both WB R1 matches in
-  // that group had no real losers), auto-advance the WB drop-in as if they won a bye.
+  // If the LB R1 match feeding into this one was a double-BYE (status=bye, no winner,
+  // slot 1 is empty), auto-advance the WB drop-in — they have no opponent.
   if (!lbMatch.participant1Id) {
     await prisma.match.update({
       where: { id: lbMatch.id },
@@ -516,32 +516,54 @@ async function handleGFResult(
 /**
  * Detect LB R1 matches that will only ever have one player because the paired
  * WB R1 match was a BYE (producing no loser). Auto-advance the lone participant.
+ * Also handles double-BYE: both WB R1 matches were BYEs → LB R1 has NO players
+ * → mark the LB R1 match as bye so the LB R2 WB drop-in auto-advances later.
  */
 async function autoResolveLBSingletons(tournamentId: string, bracketLevel: string | null) {
-  const singletons = await prisma.match.findMany({
+  const lbR1Matches = await prisma.match.findMany({
     where: {
       tournamentId,
       bracketLevel,
       bracketSide: "losers",
       round: 1,
       status: "pending",
-      OR: [
-        { participant1Id: { not: null }, participant2Id: null },
-        { participant1Id: null, participant2Id: { not: null } },
-      ],
     },
   });
 
-  for (const lbMatch of singletons) {
-    const lbPos       = lbMatch.position;
-    const emptySlot1  = !lbMatch.participant1Id;
-    // slot1 comes from WB R1 pos (2*lbPos), slot2 from WB R1 pos (2*lbPos+1)
-    const wbPosForEmpty = emptySlot1 ? 2 * lbPos : 2 * lbPos + 1;
+  for (const lbMatch of lbR1Matches) {
+    const lbPos = lbMatch.position;
+    // The two WB R1 matches whose losers pair up here
+    const wbPos1 = 2 * lbPos;
+    const wbPos2 = 2 * lbPos + 1;
 
-    const wbMatch = await prisma.match.findFirst({
-      where: { tournamentId, bracketLevel, round: 1, position: wbPosForEmpty, bracketSide: "winners" },
-    });
-    // Only auto-advance when the partner WB match is a confirmed BYE
+    const [wb1, wb2] = await Promise.all([
+      prisma.match.findFirst({ where: { tournamentId, bracketLevel, round: 1, position: wbPos1, bracketSide: "winners" } }),
+      prisma.match.findFirst({ where: { tournamentId, bracketLevel, round: 1, position: wbPos2, bracketSide: "winners" } }),
+    ]);
+
+    const wb1IsBye = !wb1 || wb1.status === "bye";
+    const wb2IsBye = !wb2 || wb2.status === "bye";
+
+    // Case A: DOUBLE-BYE — both WB R1 matches are byes, no real players in LB R1
+    // Mark the LB R1 match as a bye with no winner so the downstream LB R2 match
+    // can detect an empty slot and auto-advance the WB R2 drop-in.
+    if (wb1IsBye && wb2IsBye && !lbMatch.participant1Id && !lbMatch.participant2Id) {
+      await prisma.match.update({
+        where: { id: lbMatch.id },
+        data: { status: "bye" }, // no winnerId — the LB R2 drop-in will auto-advance
+      });
+      continue;
+    }
+
+    // Case B: SINGLE-BYE — one slot has a real player, other is empty
+    const hasOnePlayer = (lbMatch.participant1Id && !lbMatch.participant2Id) ||
+                         (!lbMatch.participant1Id && lbMatch.participant2Id);
+    if (!hasOnePlayer) continue;
+
+    const emptySlot1    = !lbMatch.participant1Id;
+    const wbPosForEmpty = emptySlot1 ? wbPos1 : wbPos2;
+    const wbMatch       = emptySlot1 ? wb1 : wb2;
+
     if (!wbMatch || wbMatch.status !== "bye") continue;
 
     const realPlayerId = (lbMatch.participant1Id ?? lbMatch.participant2Id)!;
