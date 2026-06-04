@@ -2,13 +2,14 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { Trophy, LogOut, LayoutDashboard, Menu, X, Database, Target, MonitorX, KeyRound, Eye, EyeOff } from "lucide-react";
+import { Trophy, LogOut, LayoutDashboard, Menu, X, Database, Target, MonitorX, KeyRound, Eye, EyeOff, Bell, BellOff } from "lucide-react";
 import { useAuthStore } from "@/store/auth.store";
 import { clsx } from "clsx";
 import { useRef, useState, useEffect } from "react";
 import toast from "react-hot-toast";
 import { useOnClickOutside } from "@/hooks/useOnClickOutside";
 import { api } from "@/lib/api";
+import { usePushNotifications } from "@/hooks/usePushNotifications";
 
 // Build-time commit injected by Next.js via NEXT_PUBLIC_COMMIT_SHA env var
 const LOCAL_COMMIT = (process.env.NEXT_PUBLIC_COMMIT_SHA ?? "local").slice(0, 7);
@@ -37,6 +38,7 @@ export function Navbar() {
   }, []);
 
   const versionMismatch = serverCommit && LOCAL_COMMIT !== "local" && serverCommit !== LOCAL_COMMIT;
+  const { isSupported, isSubscribed, isLoading: pushLoading, subscribe, needsInstall } = usePushNotifications();
 
   // ── Change password modal ────────────────────────────────────────────────────
   const [showChangePw,   setShowChangePw]   = useState(false);
@@ -171,6 +173,23 @@ export function Navbar() {
                         <KeyRound className="w-4 h-4 text-ink-500" />
                         Cambiar contraseña
                       </button>
+                      {/* Push notification toggle — always accessible so players can re-activate */}
+                      {isSupported && (
+                        <>
+                          <div className="border-t border-ink-800" />
+                          <button
+                            onClick={() => { setUserMenu(false); subscribe(); }}
+                            disabled={pushLoading || isSubscribed}
+                            className="flex items-center gap-2.5 w-full px-4 py-3 text-sm transition-colors text-left
+                                       disabled:opacity-50 disabled:cursor-not-allowed
+                                       text-ink-300 hover:bg-ink-800 hover:text-white">
+                            {isSubscribed
+                              ? <><BellOff className="w-4 h-4 text-green-500" /><span className="text-green-400">Notificaciones activas</span></>
+                              : <><Bell className="w-4 h-4 text-amber-400" /><span className="text-amber-300">Activar notificaciones</span></>
+                            }
+                          </button>
+                        </>
+                      )}
                       <div className="border-t border-ink-800" />
                       <button
                         onClick={() => { setUserMenu(false); handleLogout(); }}
