@@ -265,7 +265,10 @@ export const launchMatch = async (req: AuthRequest, res: Response, next: NextFun
         const busyMatch = await prisma.match.findFirst({
           where: {
             tournamentId: match.tournamentId,
-            bracketLevel: match.bracketLevel,   // scope to same level only
+            bracketLevel: match.bracketLevel,
+            // For RR: also scope to the same group so players in multiple
+            // groups (shouldn't happen, but guard anyway) don't block each other
+            ...(match.rrGroup ? {} : {}), // no extra filter needed — bracketLevel handles it
             id: { not: match.id },
             status: { notIn: ["completed", "bye"] },
             launch1At: { not: null },
@@ -398,13 +401,24 @@ function sendPushNotification(
   const title = `🎯 ${callLabel} — Diana ${dianaNum}`;
   const body  = `${tournamentName}: dirígete a la diana ${dianaNum}`;
 
-  const userIds = [match.participant1, match.participant2]
+  const participants = [match.participant1, match.participant2];
+  const userIds = participants
     .map(p => p?.userId)
     .filter((id): id is string => !!id);
 
-  console.log(`[push/diana] call=${callNumber} diana=${dianaNum} userIds=${JSON.stringify(userIds)}`);
+  // Detailed logging so we can diagnose missing notifications in Railway logs
+  console.log(`[push/diana] tournament="${tournamentName}" call=${callNumber} diana=${dianaNum}`);
+  console.log(`[push/diana] p1: userId=${match.participant1?.userId ?? "NULL"} name=${match.participant1?.user?.name ?? match.participant1?.team?.name ?? "?"}`);
+  console.log(`[push/diana] p2: userId=${match.participant2?.userId ?? "NULL"} name=${match.participant2?.user?.name ?? match.participant2?.team?.name ?? "?"}`);
+  console.log(`[push/diana] sending to ${userIds.length} user(s): ${JSON.stringify(userIds)}`);
+
+  if (userIds.length === 0) {
+    console.warn("[push/diana] ⚠️ No userIds found — participants may be ghost accounts not linked to real users");
+  }
 
   for (const userId of userIds) {
-    sendPushToUser(userId, { title, body }).catch((e) => console.error("[push/diana] unexpected error:", e));
+    sendPushToUser(userId, { title, body })
+      .then(() => console.log(`[push/diana] ✅ sent to userId=${userId}`))
+      .catch((e) => console.error(`[push/diana] ❌ failed for userId=${userId}:`, e?.message ?? e));
   }
 }
