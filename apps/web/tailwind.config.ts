@@ -5,33 +5,33 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        // Rojos
+        // Crimson deportivo — más cálido y rico que el rojo puro anterior
         red: {
-          50:  "#fff0f0",
-          100: "#ffe0e0",
-          200: "#ffc0c0",
-          300: "#ff8080",
-          400: "#ff4040",
-          500: "#e81010",  // rojo principal
-          600: "#cc0000",  // hover
-          700: "#a30000",  // dark
-          800: "#6b0000",  // very dark
-          900: "#3d0000",  // bg tint
-          950: "#200000",  // deep bg
+          50:  "#fff1f2",
+          100: "#ffe0e3",
+          200: "#ffc0c6",
+          300: "#ff8090",
+          400: "#ff4060",
+          500: "#C41230",  // crimson principal (antes #e81010)
+          600: "#A50E28",  // hover
+          700: "#820A1F",  // dark
+          800: "#5C0617",  // very dark
+          900: "#38030E",  // bg tint
+          950: "#1E0108",  // deep bg
         },
-        // Negros / grises oscuros
+        // Negros / grises oscuros — ligeramente más cálidos
         ink: {
-          50:  "#f5f5f5",
-          100: "#e8e8e8",
-          200: "#d0d0d0",
-          300: "#a8a8a8",
-          400: "#787878",
-          500: "#505050",
-          600: "#383838",
-          700: "#262626",
-          800: "#181818",
-          900: "#111111",
-          950: "#080808",
+          50:  "#F5F5F6",
+          100: "#E8E8EA",
+          200: "#D0D0D4",
+          300: "#A8A8B0",
+          400: "#78787E",
+          500: "#505056",
+          600: "#38383E",
+          700: "#252529",
+          800: "#161619",
+          900: "#0F0F11",
+          950: "#080809",
         },
       },
       fontFamily: {
@@ -40,12 +40,12 @@ const config: Config = {
         mono:    ["JetBrains Mono", "Fira Code", "monospace"],
       },
       boxShadow: {
-        "red-glow": "0 0 20px rgba(232, 16, 16, 0.3)",
-        "red-sm":   "0 0 8px rgba(232, 16, 16, 0.2)",
+        "red-glow": "0 0 24px rgba(196, 18, 48, 0.35)",
+        "red-sm":   "0 0 10px rgba(196, 18, 48, 0.25)",
       },
       backgroundImage: {
         "gradient-radial": "radial-gradient(var(--tw-gradient-stops))",
-        "red-gradient": "linear-gradient(135deg, #cc0000 0%, #7f0000 100%)",
+        "red-gradient": "linear-gradient(135deg, #C41230 0%, #7A0B1E 100%)",
       },
     },
   },

@@ -1619,19 +1619,17 @@ export default function DashboardPage() {
       {/* Stats */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {[
-          { icon: Trophy,      value: stats.total,     label: "Total torneos", accent: "text-red-400",    bg: "bg-red-900/20 border-red-900/40" },
-          { icon: Play,        value: stats.active,    label: "En curso",      accent: "text-green-400",  bg: "bg-green-900/20 border-green-900/40" },
-          { icon: CheckCircle, value: stats.completed, label: "Completados",   accent: "text-purple-400", bg: "bg-purple-900/20 border-purple-900/40" },
-          { icon: Users,       value: stats.players,   label: "Participantes", accent: "text-white",      bg: "bg-ink-800 border-ink-700" },
-        ].map(({ icon: Icon, value, label, accent, bg }) => (
-          <div key={label} className={`rounded-xl p-5 border flex items-center gap-4 ${bg}`}>
-            <div className={`w-10 h-10 rounded-lg bg-ink-900/60 flex items-center justify-center ${accent}`}>
-              <Icon className="w-5 h-5" />
+          { icon: Trophy,      value: stats.total,     label: "TOTAL TORNEOS", accent: "text-white",       valColor: "text-white",        bg: "bg-ink-900 border-ink-800" },
+          { icon: Play,        value: stats.active,    label: "EN CURSO",      accent: "text-green-400",   valColor: "text-green-400",    bg: "bg-ink-900 border-ink-800" },
+          { icon: CheckCircle, value: stats.completed, label: "COMPLETADOS",   accent: "text-blue-400",    valColor: "text-blue-400",     bg: "bg-ink-900 border-ink-800" },
+          { icon: Users,       value: stats.players,   label: "PARTICIPANTES", accent: "text-violet-400",  valColor: "text-violet-400",   bg: "bg-ink-900 border-ink-800" },
+        ].map(({ icon: Icon, value, label, accent, valColor, bg }) => (
+          <div key={label} className={`rounded-2xl p-5 border relative overflow-hidden transition-colors hover:border-ink-600 ${bg}`}>
+            <div className={`absolute top-3 right-3 opacity-10 ${accent}`}>
+              <Icon className="w-8 h-8" />
             </div>
-            <div>
-              <p className={`text-3xl font-black ${accent}`}>{value}</p>
-              <p className="text-xs text-ink-500 mt-0.5">{label}</p>
-            </div>
+            <p className={`text-4xl font-black leading-none mb-2 ${valColor}`} style={{ fontFamily: '"Bebas Neue", sans-serif', letterSpacing: '0.02em' }}>{value}</p>
+            <p className="text-[10px] font-bold text-ink-500 tracking-widest">{label}</p>
           </div>
         ))}
       </div>

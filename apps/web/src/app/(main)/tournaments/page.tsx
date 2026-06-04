@@ -164,8 +164,9 @@ export default function TournamentsPage() {
                       </div>
                     ) : (
                       /* Placeholder when no image */
-                      <div className="w-full flex items-center justify-center bg-gradient-to-br from-ink-900 to-ink-950 border-b border-ink-800" style={{ height: 80 }}>
-                        <Trophy className="w-8 h-8 text-ink-700" />
+                      <div className="w-full flex items-center justify-center border-b border-ink-800 relative overflow-hidden" style={{ height: 80, background: 'linear-gradient(135deg, #1a0808 0%, #0d0d0f 100%)' }}>
+                        <div className="absolute inset-0" style={{ background: 'radial-gradient(ellipse at 30% 50%, rgba(196,18,48,0.1) 0%, transparent 70%)' }} />
+                        <Trophy className="w-8 h-8 relative z-10" style={{ color: 'rgba(255,255,255,0.08)' }} />
                       </div>
                     )}
 
@@ -185,7 +186,7 @@ export default function TournamentsPage() {
                         </span>
                       </div>
 
-                      <h2 className="text-lg font-bold text-white mb-2 line-clamp-2 group-hover:text-red-400 transition-colors">
+                      <h2 className="text-lg font-bold text-white mb-2 line-clamp-2 group-hover:text-red-400 transition-colors tracking-wide">
                         {t.name}
                       </h2>
                       {t.description && (

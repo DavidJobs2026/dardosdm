@@ -93,7 +93,7 @@ export function Navbar() {
   const roleColor = user?.role === "admin" ? "text-yellow-400" : user?.role === "player" ? "text-ink-400" : "text-red-400";
 
   return (
-    <nav className="bg-ink-900 border-b border-ink-800 sticky top-0 z-50">
+    <nav className="bg-ink-950/95 backdrop-blur-sm border-b border-ink-800 sticky top-0 z-50 relative after:absolute after:bottom-0 after:left-0 after:right-0 after:h-px after:bg-gradient-to-r after:from-transparent after:via-red-600/40 after:to-transparent">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16">
 
