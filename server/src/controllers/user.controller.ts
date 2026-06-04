@@ -216,6 +216,8 @@ export const batchCreateUsers = async (req: AuthRequest, res: Response, next: Ne
       }
     }
 
+    const created = results.filter(r => r.status === "created").length;
+    audit({ req, action: "user.batch_create", entityType: "user", entityId: tournamentId, details: { total: players.length, created, tournamentId } });
     return res.json({ data: results });
   } catch (err) {
     next(err);
@@ -375,6 +377,7 @@ export const updateUserProfile = async (req: AuthRequest, res: Response, next: N
         ligaCard: true, clubCard: true, emailVerified: true, createdAt: true,
       },
     });
+    audit({ req, action: "user.profile_update", entityType: "user", entityId: updated.id, entityName: updated.name, details: { fields: Object.keys(body) } });
     return res.json({ data: updated, message: "Perfil actualizado" });
   } catch (err) {
     if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
@@ -660,6 +663,7 @@ export const absorbGhost = async (req: AuthRequest, res: Response, next: NextFun
     // Delete ghost account (cascade deletes remaining participants tied to ghost)
     await prisma.user.delete({ where: { id: ghost.id } });
 
+    audit({ req, action: "user.ghost_absorb", entityType: "user", entityId: realUser.id, entityName: realUser.name, details: { ghostId: ghost.id, ghostEmail: ghost.email } });
     return res.json({ message: `Jugador fantasma fusionado con ${realUser.name}. El historial de partidas ha sido transferido.` });
   } catch (err) { next(err); }
 };

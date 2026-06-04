@@ -17,7 +17,12 @@ export type AuditAction =
   | "participant.no_show"
   | "match.report"
   | "match.reset"
+  | "user.register"        // new player account created via public registration
   | "user.login"
+  | "user.profile_update"  // organizer/admin edited a user's profile
+  | "user.password_reset"  // password changed via reset flow
+  | "user.ghost_absorb"    // ghost account merged into real user
+  | "user.batch_create"    // bulk player creation from historico
   | "user.role_change"
   | "user.reset_password"
   | "user.ban";
@@ -40,6 +45,21 @@ export async function audit(params: AuditParams): Promise<void> {
     (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() ||
     req.socket?.remoteAddress ||
     undefined;
+
+  auditRaw({ userId, action, entityType, entityId, entityName, details, ip });
+}
+
+/** Log an action when there is no authenticated req.user (e.g. public registration). */
+export function auditRaw(params: {
+  userId:      string;
+  action:      AuditAction;
+  entityType:  "tournament" | "match" | "participant" | "user";
+  entityId?:   string;
+  entityName?: string;
+  details?:    Record<string, unknown>;
+  ip?:         string | null;
+}): void {
+  const { userId, action, entityType, entityId, entityName, details, ip } = params;
 
   // Fire-and-forget — never block the main request
   prisma.auditLog

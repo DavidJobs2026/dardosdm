@@ -7,6 +7,7 @@ import { signAccessToken, signRefreshToken, verifyRefreshToken } from "../utils/
 import { badRequest, unauthorized, notFound } from "../utils/errors";
 import { AuthRequest } from "../middlewares/auth.middleware";
 import { sendWelcomeVerification, sendPasswordReset, sendPasswordChangedAlert } from "../lib/email";
+import { auditRaw } from "../lib/audit";
 
 // ─── Token hashing helper (VULN-018) ─────────────────────────────────────────
 // Reset and verification tokens are stored as SHA-256 hashes in the DB.
@@ -221,6 +222,10 @@ export const register = async (req: Request, res: Response, next: NextFunction) 
     sendWelcomeVerification({ to: email, name, verifyUrl }).catch(err =>
       console.error("[email] Failed to send welcome email:", err)
     );
+
+    // Audit the registration so every account creation is traceable
+    const regIp = (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() || req.socket?.remoteAddress;
+    auditRaw({ userId: user.id, action: "user.register", entityType: "user", entityId: user.id, entityName: user.name, ip: regIp });
 
     // All public registrations require email verification before receiving tokens.
     return res.status(201).json({
