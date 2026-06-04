@@ -206,20 +206,29 @@ export function Navbar() {
       {/* Version badge — always visible at bottom of navbar for admins/organizers */}
       {user && (user.role === "admin" || user.role === "organizer") && serverCommit && (
         <div className={clsx(
-          "flex items-center justify-center gap-2 py-1 text-[10px] font-mono border-t",
+          "flex items-center justify-center gap-2 px-4 py-1.5 text-[11px] font-mono border-t",
           versionMismatch
-            ? "bg-amber-900/30 border-amber-800/50 text-amber-400"
-            : "bg-ink-950 border-ink-800/50 text-ink-600"
+            ? "bg-amber-900/40 border-amber-700/60 text-amber-300"
+            : "bg-ink-900 border-ink-700 text-ink-300"
         )}>
           {versionMismatch ? (
             <>
-              <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
-              <span>⚠ Frontend <strong>{LOCAL_COMMIT}</strong> · Servidor <strong>{serverCommit}</strong> — deploy pendiente</span>
+              <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse shrink-0" />
+              <span>
+                ⚠ Frontend <strong className="text-white">v.{LOCAL_COMMIT}</strong>
+                {" · "}
+                Servidor <strong className="text-white">v.{serverCommit}</strong>
+                {" — "}
+                <span className="text-amber-200">deploy pendiente</span>
+              </span>
             </>
           ) : (
             <>
-              <span className="w-1.5 h-1.5 rounded-full bg-green-600" />
-              <span>v{serverCommit} · sincronizado</span>
+              <span className="w-2 h-2 rounded-full bg-green-500 shrink-0" />
+              <span>
+                <strong className="text-white">v.{serverCommit}</strong>
+                <span className="text-green-400 ml-1.5">✓ sincronizado</span>
+              </span>
             </>
           )}
         </div>
