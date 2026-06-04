@@ -413,20 +413,23 @@ function MatchRow({ match, dianas, tournament, onDataChange, onReport, overdue }
                     <ChevronDown className="w-3 h-3" />
                   </button>
                   {showSelect && (
-                    <div className="absolute top-full left-0 mt-1 z-20 bg-[#1a1a1a] border border-[#333] rounded-xl shadow-xl p-2 max-w-xs">
+                    <div
+                      className="absolute top-full left-0 mt-1 z-30 bg-[#1a1a1a] border border-[#333] rounded-xl shadow-2xl p-2"
+                      style={{ width: 220, maxHeight: 220, overflowY: 'auto' }}
+                    >
                       {availableDianas.length === 0 ? (
                         <p className="text-xs text-[#666] px-2 py-1">No hay dianas disponibles</p>
                       ) : (
-                        <div className="flex flex-wrap gap-1 overflow-y-auto max-h-48">
-                        {availableDianas.map(d => (
-                        <button
-                          key={d.id}
-                          onClick={() => handleAssign(d.number)}
-                          className="w-9 h-9 rounded-lg bg-green-900/30 border border-green-700/40 text-green-300 text-xs font-bold hover:bg-green-800/40 transition-colors"
-                        >
-                          {d.number}
-                        </button>
-                        ))}
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 4 }}>
+                          {availableDianas.map(d => (
+                            <button
+                              key={d.id}
+                              onClick={() => handleAssign(d.number)}
+                              className="h-9 rounded-lg bg-green-900/30 border border-green-700/40 text-green-300 text-xs font-bold hover:bg-green-800/40 transition-colors"
+                            >
+                              {d.number}
+                            </button>
+                          ))}
                         </div>
                       )}
                     </div>
