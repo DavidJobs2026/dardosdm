@@ -112,13 +112,7 @@ export const listTournaments = async (req: AuthRequest, res: Response, next: Nex
     try {
       [tournaments, total] = await runQuery(true);
     } catch (colErr: any) {
-      // DB migration pending — is_public column doesn't exist yet; fall back gracefully
-      if (String(colErr?.message).includes("is_public") || colErr?.code === "P2022") {
-        console.warn("[tournaments] is_public column missing — run DB migration. Falling back to unfiltered.");
-        [tournaments, total] = await runQuery(false);
-      } else {
-        throw colErr;
-      }
+      throw colErr;
     }
 
     const data = tournaments.map((t: any) => ({
@@ -147,11 +141,10 @@ export const getTournament = async (req: AuthRequest, res: Response, next: NextF
     if (!tournament) return next(notFound("Tournament"));
 
     // Non-organizer / unauthenticated users can only see published tournaments.
-    // VULN-022 fix: unauthenticated requests had req.user === undefined so
-    // req.user?.role === "player" was false → private tournaments were visible.
-    // Now we check: if the caller is NOT an organizer or admin, block private tournaments.
+    // BUG-3 fix: use !== true instead of === false so that NULL isPublic
+    // (rows that pre-date the column) is treated as private, not public.
     const isPrivileged = req.user?.role === "organizer" || req.user?.role === "admin";
-    if (!isPrivileged && tournament.isPublic === false) {
+    if (!isPrivileged && tournament.isPublic !== true) {
       return next(notFound("Tournament"));
     }
 
@@ -1200,27 +1193,37 @@ export const createTiebreakerMatch = async (req: AuthRequest, res: Response, nex
 /** POST /tournaments/:id/matches/:matchId/tiebreaker-result { first, second, third } */
 export const reportTiebreakerResult = async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
+    // BUG-5 fix: support both 2-player and 3-player tiebreakers
+    // third is optional — omit it for a 2-player tiebreaker
     const { first, second, third } = z.object({
       first:  z.string().min(1),
       second: z.string().min(1),
-      third:  z.string().min(1),
+      third:  z.string().min(1).optional(),
     }).parse(req.body);
 
-    // Validate all three are distinct
-    if (new Set([first, second, third]).size !== 3) {
-      return next(badRequest("Los tres participantes deben ser distintos"));
+    // Validate submitted IDs are distinct
+    const submittedIds = [first, second, ...(third ? [third] : [])];
+    if (new Set(submittedIds).size !== submittedIds.length) {
+      return next(badRequest("Los participantes deben ser distintos"));
     }
 
     const match = await prisma.match.findUnique({ where: { id: req.params.matchId } });
     if (!match) return next(notFound("Match"));
     if (match.tournamentId !== req.params.id) return next(notFound("Match"));
-    if (!match.isTiebreaker || !match.participant3Id) {
-      return next(badRequest("Este partido no es un desempate de 3 jugadores"));
+    if (!match.isTiebreaker) {
+      return next(badRequest("Este partido no es un desempate"));
+    }
+    // A 3-player tiebreaker requires third; a 2-player tiebreaker must not supply it
+    if (match.participant3Id && !third) {
+      return next(badRequest("Este desempate es de 3 jugadores — incluye el tercer participante"));
+    }
+    if (!match.participant3Id && third) {
+      return next(badRequest("Este desempate es de 2 jugadores — no incluyas tercer participante"));
     }
 
-    // Validate the submitted IDs are exactly the match's own participants (any order)
-    const validIds = new Set([match.participant1Id, match.participant2Id, match.participant3Id]);
-    if (![first, second, third].every(id => validIds.has(id))) {
+    // Validate submitted IDs match the match's own participants
+    const validIds = new Set([match.participant1Id, match.participant2Id, match.participant3Id].filter(Boolean));
+    if (!submittedIds.every(id => validIds.has(id))) {
       return next(badRequest("Los participantes no corresponden a este partido"));
     }
 
@@ -1235,15 +1238,15 @@ export const reportTiebreakerResult = async (req: AuthRequest, res: Response, ne
       data: {
         participant1Id: first,
         participant2Id: second,
-        participant3Id: third,
+        ...(third !== undefined ? { participant3Id: third } : {}),
         winnerId: first,
         status: "completed",
         playedAt: new Date(),
       },
       include: {
-        participant1: { include: { user: { select: { id: true, name: true, avatarUrl: true, elo: true } }, team: { select: { id: true, name: true, logoUrl: true } } } },
-        participant2: { include: { user: { select: { id: true, name: true, avatarUrl: true, elo: true } }, team: { select: { id: true, name: true, logoUrl: true } } } },
-        participant3: { include: { user: { select: { id: true, name: true, avatarUrl: true, elo: true } }, team: { select: { id: true, name: true, logoUrl: true } } } },
+        participant1: { include: { user: { select: { id: true, name: true, avatarUrl: true } }, team: { select: { id: true, name: true, logoUrl: true } } } },
+        participant2: { include: { user: { select: { id: true, name: true, avatarUrl: true } }, team: { select: { id: true, name: true, logoUrl: true } } } },
+        participant3: { include: { user: { select: { id: true, name: true, avatarUrl: true } }, team: { select: { id: true, name: true, logoUrl: true } } } },
       },
     });
 
@@ -1408,11 +1411,12 @@ export const playerInscribe = async (req: AuthRequest, res: Response, next: Next
       });
       if (ghost) {
         // Claim the ghost participant — link to the real user account
-        await prisma.participant.update({
+        // BUG-4 fix: return 200 success, not 400 — the inscription succeeded
+        const claimed = await prisma.participant.update({
           where: { id: ghost.id },
           data: { userId: req.user!.userId },
         });
-        return next(badRequest("Ya estás inscrito en este torneo"));
+        return res.status(200).json({ data: claimed, message: "Solicitud vinculada a tu cuenta. Pendiente de aprobación." });
       }
       // Also block if the ghost already has the correct userId (shouldn't happen but guard)
       const dniDuplicate = await prisma.participant.findFirst({

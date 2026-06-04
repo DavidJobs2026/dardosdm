@@ -373,7 +373,9 @@ export const noShowMatch = (io: SocketServer) =>
       const loserId = noShowPlayerId;
       await handleBracketAdvancement(tournament.id, tournament.format, match, winnerId, loserId);
 
-      io.to(`tournament:${match.tournamentId}`).emit("match:updated", updated);
+      // BUG-6 fix: use broadcastMatch() to emit the full match shape (with participant/diana
+      // includes) instead of the bare prisma.match.update result which lacks relations.
+      broadcastMatch(match.id).catch(() => {});
 
       return res.json({ data: { winnerId }, message: "No presentado registrado" });
     } catch (err) { next(err); }

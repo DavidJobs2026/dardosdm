@@ -18,6 +18,12 @@ const winnerOnlySchema = z.object({
 
 export const listMatches = async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
+    const isPrivileged = req.user?.role === "organizer" || req.user?.role === "admin";
+    if (!isPrivileged) {
+      const tournament = await prisma.tournament.findUnique({ where: { id: req.params.id }, select: { isPublic: true } });
+      if (!tournament || tournament.isPublic === false) return next(notFound("Tournament"));
+    }
+
     const { round, bracketSide } = req.query;
     const validSides = ["winners", "losers"] as const;
     const roundNum   = round ? Number(round) : undefined;
@@ -62,16 +68,19 @@ export const listMatches = async (req: AuthRequest, res: Response, next: NextFun
 
 export const getMatch = async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
+    const isPrivileged = req.user?.role === "organizer" || req.user?.role === "admin";
     const match = await prisma.match.findUnique({
       where: { id: req.params.matchId },
       include: {
         participant1: { include: { user: { select: { id: true, name: true, avatarUrl: true, elo: true } }, team: { select: { id: true, name: true, logoUrl: true } } } },
         participant2: { include: { user: { select: { id: true, name: true, avatarUrl: true, elo: true } }, team: { select: { id: true, name: true, logoUrl: true } } } },
         winner: { include: { user: { select: { id: true, name: true, avatarUrl: true } }, team: { select: { id: true, name: true } } } },
+        tournament: { select: { isPublic: true } },
       },
     });
     if (!match) return next(notFound("Match"));
     if (match.tournamentId !== req.params.id) return next(notFound("Match"));
+    if (!isPrivileged && match.tournament.isPublic === false) return next(notFound("Tournament"));
     return res.json({ data: match });
   } catch (err) {
     next(err);
@@ -374,7 +383,11 @@ async function dropToLosers(
       where: { tournamentId, bracketLevel, round: lbRound, position: lbPosition, bracketSide: "losers" },
     });
     if (!lbMatch) return;
-    await prisma.match.update({ where: { id: lbMatch.id }, data: { participant2Id: loserId } });
+    // BUG-1 fix: use isSlot1 to choose the correct slot (was always writing participant2Id)
+    await prisma.match.update({
+      where: { id: lbMatch.id },
+      data: isSlot1 ? { participant1Id: loserId } : { participant2Id: loserId },
+    });
     return;
   }
 
