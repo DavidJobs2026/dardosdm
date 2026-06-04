@@ -7,6 +7,7 @@ import teamRoutes from "./team.routes";
 import userRoutes from "./user.routes";
 import playerRecordRoutes from "./playerRecord.routes";
 import pushRoutes from "./push.routes";
+import backupRoutes from "./backup.routes";
 
 export function createRouter(io: SocketServer): Router {
   const router = Router();
@@ -18,6 +19,7 @@ export function createRouter(io: SocketServer): Router {
   router.use("/users", userRoutes);
   router.use("/player-records", playerRecordRoutes);
   router.use("/push", pushRoutes);
+  router.use("/backup", backupRoutes);
 
   return router;
 }

@@ -10,7 +10,7 @@ import {
   Plus, Trophy, Users, Play, CheckCircle, ArrowRight, Swords,
   ShieldCheck, CalendarCog, Trash2, ChevronDown, Loader2, UserPlus, X, Eye, EyeOff, Pencil, KeyRound,
   UserCog, RotateCcw, Phone, MapPin, CreditCard, Search, ClipboardList, ChevronLeft, ChevronRight,
-  GitMerge, AlertTriangle, CheckCircle2, History,
+  GitMerge, AlertTriangle, CheckCircle2, History, Download,
 } from "lucide-react";
 import { clsx } from "clsx";
 import toast from "react-hot-toast";
@@ -1572,9 +1572,19 @@ export default function DashboardPage() {
             )}
           </div>
         </div>
-        <Link href="/tournaments/create" className="btn-primary shadow-red-glow">
-          <Plus className="w-4 h-4" /> Nuevo torneo
-        </Link>
+        <div className="flex items-center gap-2">
+          <a
+            href={`${process.env.NEXT_PUBLIC_API_URL}/backup/download`}
+            className="flex items-center gap-2 px-3 py-2 rounded-xl border border-ink-700 text-ink-300
+                       hover:border-ink-500 hover:text-white transition-all text-sm font-semibold"
+            title="Descargar copia de seguridad SQL"
+          >
+            <Download className="w-4 h-4" /> Backup
+          </a>
+          <Link href="/tournaments/create" className="btn-primary shadow-red-glow">
+            <Plus className="w-4 h-4" /> Nuevo torneo
+          </Link>
+        </div>
       </div>
 
       {/* Stats */}
