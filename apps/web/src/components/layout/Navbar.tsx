@@ -83,11 +83,13 @@ export function Navbar() {
   const isOrganizer = user?.role === "organizer" || user?.role === "admin";
 
   const navLinks = isPlayer
-    ? [{ href: "/torneos", label: "Torneos", icon: Trophy }]
-    : [
+    ? [{ href: "/torneos",     label: "Torneos",   icon: Trophy }]
+    : isOrganizer
+    ? [
         { href: "/tournaments", label: "Torneos",   icon: Trophy },
         { href: "/historico",   label: "Histórico", icon: Database },
-      ];
+      ]
+    : [{ href: "/tournaments", label: "Torneos",   icon: Trophy }]; // unauthenticated — no Histórico
 
   const roleLabel = user?.role === "admin" ? "Super Admin" : user?.role === "organizer" ? "Organizador" : "Jugador";
   const roleColor = user?.role === "admin" ? "text-yellow-400" : user?.role === "player" ? "text-ink-400" : "text-red-400";
