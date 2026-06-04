@@ -409,7 +409,19 @@ async function dropToLosers(
     where: { tournamentId, bracketLevel, round: lbRound, position: lbPosition, bracketSide: "losers" },
   });
   if (!lbMatch) return;
+
+  // Place the WB loser in slot 2
   await prisma.match.update({ where: { id: lbMatch.id }, data: { participant2Id: loserId } });
+
+  // If slot 1 is still empty (the LB R1 match was a double-BYE — both WB R1 matches in
+  // that group had no real losers), auto-advance the WB drop-in as if they won a bye.
+  if (!lbMatch.participant1Id) {
+    await prisma.match.update({
+      where: { id: lbMatch.id },
+      data: { status: "bye", winnerId: loserId },
+    });
+    await advanceLBWinner(tournamentId, lbRound, lbPosition, loserId, bracketLevel);
+  }
 }
 
 /** Advance an LB winner through LB rounds, or into the Grand Final as participant2. */
