@@ -1573,6 +1573,7 @@ export default function DashboardPage() {
           </div>
         </div>
         <div className="flex items-center gap-2">
+          {/* Download backup directly */}
           <a
             href={`${process.env.NEXT_PUBLIC_API_URL}/backup/download`}
             className="flex items-center gap-2 px-3 py-2 rounded-xl border border-ink-700 text-ink-300

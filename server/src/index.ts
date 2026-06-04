@@ -7,9 +7,11 @@ import morgan from "morgan";
 import rateLimit from "express-rate-limit";
 import cookieParser from "cookie-parser";
 import path from "path";
+import cron from "node-cron";
 import { createRouter } from "./routes";
 import { errorHandler } from "./middlewares/error.middleware";
 import { initSocket } from "./lib/socket";
+import { runBackup } from "./lib/backup";
 
 const app = express();
 const httpServer = http.createServer(app);
@@ -133,6 +135,13 @@ app.use("/api/v1/auth/register",              authLimiter);                     
 app.use("/api/v1/auth/refresh",               refreshLimiter);                       // 60/15min — token brute-force
 app.use("/api/v1",      apiLimiter);
 app.use("/api/v1",      createRouter(io));
+
+// ─── Daily backup — 03:00 Europe/Madrid every day ─────────────────────────────
+// Requires BACKUP_EMAIL env var in Railway. Uses Resend to email the SQL dump.
+cron.schedule("0 3 * * *", () => {
+  console.log("[backup] Running scheduled daily backup...");
+  runBackup().catch((err) => console.error("[backup] Cron error:", err));
+}, { timezone: "Europe/Madrid" });
 
 // ─── Health check ─────────────────────────────────────────────────────────────
 // Version info — commit hash is injected by Railway automatically via RAILWAY_GIT_COMMIT_SHA
