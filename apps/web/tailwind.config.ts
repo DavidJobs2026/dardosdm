@@ -35,8 +35,9 @@ const config: Config = {
         },
       },
       fontFamily: {
-        sans: ["Inter", "system-ui", "sans-serif"],
-        mono: ["JetBrains Mono", "Fira Code", "monospace"],
+        sans:    ["Plus Jakarta Sans", "system-ui", "sans-serif"],
+        display: ["Bebas Neue", "sans-serif"],
+        mono:    ["JetBrains Mono", "Fira Code", "monospace"],
       },
       boxShadow: {
         "red-glow": "0 0 20px rgba(232, 16, 16, 0.3)",
