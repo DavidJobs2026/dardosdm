@@ -146,11 +146,27 @@ export const addParticipant = async (req: AuthRequest, res: Response, next: Next
     const user = await prisma.user.findUnique({ where: { id: entityId } });
     if (!user) return next(notFound("User"));
 
-    // ── maxMetric check ────────────────────────────────────────────────────────
-    if (tournament.maxMetric != null && metricValue != null && metricValue > tournament.maxMetric) {
-      return next(badRequest(
-        `La media del jugador (${metricValue.toFixed(2)}) supera el límite del torneo (${tournament.maxMetric.toFixed(2)})`
-      ));
+    // ── maxMetric check ─────────────────────────────────────────────────────────
+    // Use the provided metricValue if supplied; otherwise look up from playerRecord by DNI.
+    // This prevents bypassing the limit by simply omitting metricValue in the request.
+    if (tournament.maxMetric != null && tournament.metric) {
+      const metricField = tournament.metric as "ppd" | "mpr" | "combined";
+      let effectiveMetric: number | null = metricValue ?? null;
+
+      if (effectiveMetric == null && user.dni) {
+        const rec = await prisma.playerRecord.findFirst({
+          where: { dni: { equals: user.dni, mode: "insensitive" } },
+          orderBy: { createdAt: "desc" },
+          select: { ppd: true, mpr: true, combined: true },
+        });
+        if (rec) effectiveMetric = rec[metricField] ?? null;
+      }
+
+      if (effectiveMetric != null && effectiveMetric > tournament.maxMetric) {
+        return next(badRequest(
+          `La media del jugador (${effectiveMetric.toFixed(2)} ${metricField.toUpperCase()}) supera el límite del torneo (${tournament.maxMetric.toFixed(2)})`
+        ));
+      }
     }
 
     const existing = await prisma.participant.findUnique({
