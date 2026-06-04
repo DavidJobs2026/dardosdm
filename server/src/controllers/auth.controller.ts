@@ -78,8 +78,11 @@ const registerSchema = z.object({
   // We keep the field in the schema (for internal/test calls) but strip any
   // non-player value before it reaches the DB.
   role:            z.enum(["player"]).optional().default("player"),
-  // Player-specific fields (optional for organizer/admin)
-  dni:             z.string().optional(),
+  // DNI/NIE is mandatory — needed for historico matching and identity verification
+  dni:             z.string()
+                     .min(7, "El DNI/NIE es obligatorio")
+                     .max(15, "DNI/NIE demasiado largo")
+                     .regex(/^[0-9XYZxyz][0-9]{6,7}[A-Za-z]$/, "Formato de DNI/NIE inválido"),
   // Players must provide a valid Spanish mobile number (9 digits, starts with 6 or 7)
   phone:           z.string()
                      .regex(/^[67]\d{8}$/, "El teléfono debe tener 9 dígitos y comenzar por 6 o 7")
@@ -367,7 +370,7 @@ export const login = async (req: Request, res: Response, next: NextFunction) => 
 
     const expiresAt = new Date(Date.now() + COOKIE_MAX_AGE);
     await prisma.refreshToken.create({
-      data: { token: refreshToken, userId: user.id, expiresAt, userAgent: extractUserAgent(req) },
+      data: { token: hashToken(refreshToken), userId: user.id, expiresAt, userAgent: extractUserAgent(req) },
     });
 
     setRefreshCookie(res, refreshToken);
@@ -401,7 +404,7 @@ export const refresh = async (req: Request, res: Response, next: NextFunction) =
     // is rejected, preventing double-use without a read-then-delete race.
     let stored;
     try {
-      stored = await prisma.refreshToken.delete({ where: { token: refreshToken } });
+      stored = await prisma.refreshToken.delete({ where: { token: hashToken(refreshToken) } });
     } catch {
       // Token not found — already consumed or never existed
       clearRefreshCookie(res);
@@ -439,7 +442,7 @@ export const refresh = async (req: Request, res: Response, next: NextFunction) =
 
     const expiresAt = new Date(Date.now() + COOKIE_MAX_AGE);
     await prisma.refreshToken.create({
-      data: { token: newRefreshToken, userId: user.id, expiresAt, userAgent: currentUA },
+      data: { token: hashToken(newRefreshToken), userId: user.id, expiresAt, userAgent: currentUA },
     });
 
     setRefreshCookie(res, newRefreshToken);
@@ -456,7 +459,7 @@ export const logout = async (req: Request, res: Response, next: NextFunction) =>
     // Refresh token is ONLY accepted from the httpOnly cookie — never from the request body
     const refreshToken = (req as any).cookies?.[COOKIE_NAME];
     if (refreshToken) {
-      await prisma.refreshToken.deleteMany({ where: { token: refreshToken } });
+      await prisma.refreshToken.deleteMany({ where: { token: hashToken(refreshToken) } });
     }
     clearRefreshCookie(res);
     return res.json({ data: null, message: "Logged out successfully" });

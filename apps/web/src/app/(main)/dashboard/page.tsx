@@ -69,6 +69,7 @@ function CreateOrganizerModal({ onClose, onCreated }: { onClose: () => void; onC
   // ── New account tab state ──
   const [name,     setName]     = useState("");
   const [email,    setEmail]    = useState("");
+  const [dni,      setDni]      = useState("");
   const [password, setPassword] = useState("");
   const [showPw,   setShowPw]   = useState(false);
   const [saving,   setSaving]   = useState(false);
@@ -105,13 +106,17 @@ function CreateOrganizerModal({ onClose, onCreated }: { onClose: () => void; onC
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name.trim() || !email.trim() || password.length < 8) {
-      toast.error("Rellena todos los campos (contraseña mínimo 8 caracteres)");
+    if (!name.trim() || !email.trim() || !dni.trim() || password.length < 8) {
+      toast.error("Rellena todos los campos incluyendo DNI/NIE (contraseña mínimo 8 caracteres)");
       return;
     }
     setSaving(true);
     try {
-      const { data } = await api.post("/auth/register", { name, email, password, role });
+      const { data } = await api.post("/auth/register", {
+        name, email, password, role,
+        dni: dni.trim().toUpperCase(),
+        gdprConsent: true, // admin-created accounts are pre-consented
+      });
       onCreated(data.data.user);
       toast.success(`Cuenta creada para ${name}`);
       onClose();
@@ -250,9 +255,21 @@ function CreateOrganizerModal({ onClose, onCreated }: { onClose: () => void; onC
                 <label className="label">Nombre</label>
                 <input value={name} onChange={e => setName(e.target.value.toUpperCase())} className="input" placeholder="NOMBRE COMPLETO" style={{ textTransform: "uppercase" }} />
               </div>
-              <div>
-                <label className="label">Email</label>
-                <input value={email} onChange={e => setEmail(e.target.value)} type="email" className="input" placeholder="correo@ejemplo.com" />
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="label">Email</label>
+                  <input value={email} onChange={e => setEmail(e.target.value)} type="email" className="input" placeholder="correo@ejemplo.com" />
+                </div>
+                <div>
+                  <label className="label">DNI / NIE <span className="text-red-400">*</span></label>
+                  <input
+                    value={dni}
+                    onChange={e => setDni(e.target.value.toUpperCase().replace(/\s/g, ""))}
+                    className="input"
+                    placeholder="12345678A"
+                    maxLength={12}
+                  />
+                </div>
               </div>
               <div>
                 <label className="label">Contraseña</label>
