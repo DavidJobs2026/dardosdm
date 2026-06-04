@@ -266,12 +266,12 @@ export const launchMatch = async (req: AuthRequest, res: Response, next: NextFun
           where: {
             tournamentId: match.tournamentId,
             bracketLevel: match.bracketLevel,
-            // For RR: also scope to the same group so players in multiple
-            // groups (shouldn't happen, but guard anyway) don't block each other
-            ...(match.rrGroup ? {} : {}), // no extra filter needed — bracketLevel handles it
             id: { not: match.id },
             status: { notIn: ["completed", "bye"] },
             launch1At: { not: null },
+            // If all 3 calls were already made the player didn't show up —
+            // don't block them from being called in their next match.
+            launch3At: null,
             OR: ids.flatMap(id => [
               { participant1Id: id },
               { participant2Id: id },
