@@ -5,9 +5,13 @@ import { usePathname, useRouter } from "next/navigation";
 import { Trophy, LogOut, LayoutDashboard, Menu, X, Database, Target, MonitorX } from "lucide-react";
 import { useAuthStore } from "@/store/auth.store";
 import { clsx } from "clsx";
-import { useRef, useState } from "react";
+import { useRef, useState, useEffect } from "react";
 import toast from "react-hot-toast";
 import { useOnClickOutside } from "@/hooks/useOnClickOutside";
+import { api } from "@/lib/api";
+
+// Build-time commit injected by Next.js via NEXT_PUBLIC_COMMIT_SHA env var
+const LOCAL_COMMIT = (process.env.NEXT_PUBLIC_COMMIT_SHA ?? "local").slice(0, 7);
 
 export function Navbar() {
   const { user, logout, logoutAll } = useAuthStore();
@@ -15,8 +19,24 @@ export function Navbar() {
   const router   = useRouter();
   const [open, setOpen]           = useState(false);
   const [userMenu, setUserMenu]   = useState(false);
+  const [serverCommit, setServerCommit] = useState<string | null>(null);
   const userMenuRef = useRef<HTMLDivElement>(null);
   useOnClickOutside(userMenuRef, () => setUserMenu(false));
+
+  // Poll server version every 60s — shows a badge when the deployed backend
+  // has a different commit than what the frontend was built with
+  useEffect(() => {
+    const check = () => {
+      api.get("/version").then(({ data }) => {
+        setServerCommit(data.commit ?? null);
+      }).catch(() => {});
+    };
+    check();
+    const interval = setInterval(check, 60_000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const versionMismatch = serverCommit && LOCAL_COMMIT !== "local" && serverCommit !== LOCAL_COMMIT;
 
   const handleLogout = async () => {
     await logout();
@@ -180,6 +200,28 @@ export function Navbar() {
             className="flex items-center gap-2 w-full px-3 py-2.5 rounded-lg text-sm font-medium text-red-400 hover:bg-red-900/20 transition-colors">
             <MonitorX className="w-4 h-4" /> Cerrar todos los dispositivos
           </button>
+        </div>
+      )}
+
+      {/* Version badge — always visible at bottom of navbar for admins/organizers */}
+      {user && (user.role === "admin" || user.role === "organizer") && serverCommit && (
+        <div className={clsx(
+          "flex items-center justify-center gap-2 py-1 text-[10px] font-mono border-t",
+          versionMismatch
+            ? "bg-amber-900/30 border-amber-800/50 text-amber-400"
+            : "bg-ink-950 border-ink-800/50 text-ink-600"
+        )}>
+          {versionMismatch ? (
+            <>
+              <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
+              <span>⚠ Frontend <strong>{LOCAL_COMMIT}</strong> · Servidor <strong>{serverCommit}</strong> — deploy pendiente</span>
+            </>
+          ) : (
+            <>
+              <span className="w-1.5 h-1.5 rounded-full bg-green-600" />
+              <span>v{serverCommit} · sincronizado</span>
+            </>
+          )}
         </div>
       )}
     </nav>

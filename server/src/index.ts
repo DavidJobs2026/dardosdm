@@ -135,7 +135,24 @@ app.use("/api/v1",      apiLimiter);
 app.use("/api/v1",      createRouter(io));
 
 // ─── Health check ─────────────────────────────────────────────────────────────
-app.get("/health", (_req, res) => res.json({ status: "ok", timestamp: new Date().toISOString() }));
+// Version info — commit hash is injected by Railway automatically via RAILWAY_GIT_COMMIT_SHA
+const APP_VERSION  = process.env.npm_package_version ?? "1.0.0";
+const COMMIT_SHA   = (process.env.RAILWAY_GIT_COMMIT_SHA ?? process.env.COMMIT_SHA ?? "local").slice(0, 7);
+const BUILD_TIME   = new Date().toISOString();
+
+app.get("/health", (_req, res) => res.json({
+  status:    "ok",
+  version:   APP_VERSION,
+  commit:    COMMIT_SHA,
+  buildTime: BUILD_TIME,
+  timestamp: new Date().toISOString(),
+}));
+
+// Public version endpoint — frontend polls this to detect stale deploys
+app.get("/api/v1/version", (_req, res) => res.json({
+  version: APP_VERSION,
+  commit:  COMMIT_SHA,
+}));
 
 // ─── Error Handler ────────────────────────────────────────────────────────────
 app.use(errorHandler);
