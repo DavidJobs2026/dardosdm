@@ -354,7 +354,7 @@ function MatchRow({ match, dianas, tournament, onDataChange, onReport, overdue }
           {match.status === "completed" && (
             match.noShowAt ? (
               <span className="text-[10px] text-red-400 font-bold flex items-center gap-1 shrink-0">
-                <AlertTriangle className="w-3 h-3" /> Eliminado
+                <AlertTriangle className="w-3 h-3" /> No presentado
               </span>
             ) : (
               <span className="text-[10px] text-emerald-400 font-semibold flex items-center gap-1 shrink-0">
@@ -378,7 +378,7 @@ function MatchRow({ match, dianas, tournament, onDataChange, onReport, overdue }
             {match.launch3At && <span className="flex items-center gap-1"><Clock className="w-3 h-3" /> 3ª {fmtTime(match.launch3At)}</span>}
             {match.noShowAt  && (
               <span className="flex items-center gap-1 text-red-400 font-semibold">
-                <AlertTriangle className="w-3 h-3" /> Eliminado {fmtTime(match.noShowAt)}
+                <AlertTriangle className="w-3 h-3" /> No presentado {fmtTime(match.noShowAt)}
               </span>
             )}
           </div>
