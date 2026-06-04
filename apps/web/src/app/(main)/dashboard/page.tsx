@@ -1505,6 +1505,27 @@ export default function DashboardPage() {
 
   const isAdmin = user.role === "admin";
 
+  const [downloadingBackup, setDownloadingBackup] = useState(false);
+
+  const handleDownloadBackup = async () => {
+    setDownloadingBackup(true);
+    try {
+      const res = await api.get("/backup/download", { responseType: "blob" });
+      const timestamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
+      const url = URL.createObjectURL(new Blob([res.data]));
+      const a   = document.createElement("a");
+      a.href     = url;
+      a.download = `dardosdm-backup-${timestamp}.sql`;
+      a.click();
+      URL.revokeObjectURL(url);
+      toast.success("Backup descargado");
+    } catch {
+      toast.error("Error al descargar el backup");
+    } finally {
+      setDownloadingBackup(false);
+    }
+  };
+
   const stats = {
     total:     tournaments.length,
     active:    tournaments.filter(t => t.status === "in_progress").length,
@@ -1573,15 +1594,19 @@ export default function DashboardPage() {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          {/* Download backup directly */}
-          <a
-            href={`${process.env.NEXT_PUBLIC_API_URL}/backup/download`}
+          <button
+            onClick={handleDownloadBackup}
+            disabled={downloadingBackup}
             className="flex items-center gap-2 px-3 py-2 rounded-xl border border-ink-700 text-ink-300
-                       hover:border-ink-500 hover:text-white transition-all text-sm font-semibold"
+                       hover:border-ink-500 hover:text-white transition-all text-sm font-semibold
+                       disabled:opacity-40 disabled:cursor-not-allowed"
             title="Descargar copia de seguridad SQL"
           >
-            <Download className="w-4 h-4" /> Backup
-          </a>
+            {downloadingBackup
+              ? <><Loader2 className="w-4 h-4 animate-spin" /> Descargando…</>
+              : <><Download className="w-4 h-4" /> Backup</>
+            }
+          </button>
           <Link href="/tournaments/create" className="btn-primary shadow-red-glow">
             <Plus className="w-4 h-4" /> Nuevo torneo
           </Link>
