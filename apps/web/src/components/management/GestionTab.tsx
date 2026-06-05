@@ -403,42 +403,48 @@ function MatchRow({ match, dianas, tournament, onDataChange, onReport, overdue }
                   </button>
                 </div>
               ) : (
-                <div className="relative">
-                  <button
-                    onClick={() => setShowSelect(v => !v)}
-                    className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-[#252525] border border-[#333] text-[#888] text-xs hover:border-[#555] transition-colors"
-                  >
-                    <Target className="w-3.5 h-3.5" />
-                    Asignar diana
-                    <ChevronDown className="w-3 h-3" />
-                  </button>
-                  {showSelect && (
-                    <div
-                      className="absolute top-full left-0 mt-1 z-30 bg-[#1a1a1a] border border-[#333] rounded-xl shadow-2xl p-2"
-                      style={{
-                        width: 220,
-                        maxHeight: 220,
-                        overflowY: 'scroll',
-                        overscrollBehavior: 'contain',
-                        WebkitOverflowScrolling: 'touch',
+                <div className="flex items-center gap-1.5">
+                  {availableDianas.length === 0 ? (
+                    <span className="text-xs text-[#555]">Sin dianas libres</span>
+                  ) : availableDianas.length <= 20 ? (
+                    /* Pocos: mostrar botones directos */
+                    availableDianas.map(d => (
+                      <button
+                        key={d.id}
+                        onClick={() => handleAssign(d.number)}
+                        className="w-9 h-8 rounded-lg bg-green-900/30 border border-green-700/40 text-green-300 text-xs font-bold hover:bg-green-800/40 transition-colors"
+                      >
+                        {d.number}
+                      </button>
+                    ))
+                  ) : (
+                    /* Muchas: input numérico — más fiable en móvil */
+                    <form
+                      onSubmit={e => {
+                        e.preventDefault();
+                        const val = parseInt((e.currentTarget.elements.namedItem('dnum') as HTMLInputElement).value);
+                        if (!isNaN(val)) {
+                          handleAssign(val);
+                          (e.currentTarget.elements.namedItem('dnum') as HTMLInputElement).value = '';
+                        }
                       }}
+                      className="flex items-center gap-1.5"
                     >
-                      {availableDianas.length === 0 ? (
-                        <p className="text-xs text-[#666] px-2 py-1">No hay dianas disponibles</p>
-                      ) : (
-                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 4 }}>
-                          {availableDianas.map(d => (
-                            <button
-                              key={d.id}
-                              onClick={() => handleAssign(d.number)}
-                              className="h-9 rounded-lg bg-green-900/30 border border-green-700/40 text-green-300 text-xs font-bold hover:bg-green-800/40 transition-colors"
-                            >
-                              {d.number}
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                    </div>
+                      <Target className="w-3.5 h-3.5 text-[#555] shrink-0" />
+                      <input
+                        name="dnum"
+                        type="number"
+                        min={1}
+                        placeholder="Nº diana"
+                        className="w-20 h-7 px-2 rounded-lg bg-[#252525] border border-[#333] text-white text-xs focus:outline-none focus:border-green-600"
+                      />
+                      <button
+                        type="submit"
+                        className="h-7 px-2.5 rounded-lg bg-green-900/40 border border-green-700/50 text-green-300 text-xs font-bold hover:bg-green-800/50 transition-colors"
+                      >
+                        OK
+                      </button>
+                    </form>
                   )}
                 </div>
               )}
