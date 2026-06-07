@@ -602,17 +602,19 @@ interface Props {
 
 // ─── localStorage key helpers ─────────────────────────────────────────────────
 
-function lsKey(tournamentId: string) {
-  return `rrGroupDianas:${tournamentId}`;
+function lsKey(tournamentId: string, bracketLevel?: string | null) {
+  // Include level in key so each level has its own independent diana assignments
+  const lvl = bracketLevel ?? "default";
+  return `rrGroupDianas:${tournamentId}:${lvl}`;
 }
-function readGroupDianas(tournamentId: string): Record<string, number[]> {
+function readGroupDianas(tournamentId: string, bracketLevel?: string | null): Record<string, number[]> {
   try {
-    const raw = typeof window !== "undefined" ? localStorage.getItem(lsKey(tournamentId)) : null;
+    const raw = typeof window !== "undefined" ? localStorage.getItem(lsKey(tournamentId, bracketLevel)) : null;
     return raw ? (JSON.parse(raw) as Record<string, number[]>) : {};
   } catch { return {}; }
 }
-function writeGroupDianas(tournamentId: string, map: Record<string, number[]>) {
-  try { localStorage.setItem(lsKey(tournamentId), JSON.stringify(map)); } catch { /* noop */ }
+function writeGroupDianas(tournamentId: string, bracketLevel: string | null | undefined, map: Record<string, number[]>) {
+  try { localStorage.setItem(lsKey(tournamentId, bracketLevel), JSON.stringify(map)); } catch { /* noop */ }
 }
 
 export function RRView({ tournament, matches, isOrganizer, hasKO = false, bracketLevel, onReport, onDataChange }: Props) {
@@ -627,8 +629,13 @@ export function RRView({ tournament, matches, isOrganizer, hasKO = false, bracke
   // ── Group-diana state ──────────────────────────────────────────────────────
   const [dianas,         setDianas]         = useState<Diana[]>([]);
   const [groupDianasMap, setGroupDianasMap] = useState<Record<string, number[]>>(
-    () => readGroupDianas(tournament.id)
+    () => readGroupDianas(tournament.id, bracketLevel)
   );
+
+  // Re-load diana assignments when the bracket level changes (user switches level tab)
+  useEffect(() => {
+    setGroupDianasMap(readGroupDianas(tournament.id, bracketLevel));
+  }, [tournament.id, bracketLevel]);
 
   const loadDianas = useCallback(async () => {
     try {
@@ -642,7 +649,7 @@ export function RRView({ tournament, matches, isOrganizer, hasKO = false, bracke
   const handleAssignDiana = (groupName: string, num: number) => {
     setGroupDianasMap(prev => {
       const next = { ...prev, [groupName]: [...(prev[groupName] ?? []), num] };
-      writeGroupDianas(tournament.id, next);
+      writeGroupDianas(tournament.id, bracketLevel, next);
       return next;
     });
   };
@@ -650,7 +657,7 @@ export function RRView({ tournament, matches, isOrganizer, hasKO = false, bracke
   const handleUnassignDiana = (groupName: string, num: number) => {
     setGroupDianasMap(prev => {
       const next = { ...prev, [groupName]: (prev[groupName] ?? []).filter(n => n !== num) };
-      writeGroupDianas(tournament.id, next);
+      writeGroupDianas(tournament.id, bracketLevel, next);
       return next;
     });
   };
