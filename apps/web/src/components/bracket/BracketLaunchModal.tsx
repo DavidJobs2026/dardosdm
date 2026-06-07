@@ -96,7 +96,7 @@ export function BracketLaunchModal({ match, tournamentId, onClose, onSuccess }: 
             )}
           </div>
 
-          {/* Diana grid */}
+          {/* Diana selector */}
           <div>
             <p className="text-xs font-semibold text-ink-400 uppercase tracking-wider mb-2">
               Selecciona diana
@@ -106,23 +106,16 @@ export function BracketLaunchModal({ match, tournamentId, onClose, onSuccess }: 
             ) : available.length === 0 ? (
               <p className="text-xs text-ink-600 text-center py-4">No hay dianas disponibles</p>
             ) : (
-              <div className="grid grid-cols-5 gap-1.5">
+              <select
+                value={selected ?? ""}
+                onChange={e => setSelected(e.target.value ? Number(e.target.value) : null)}
+                className="w-full h-9 px-3 rounded-lg bg-ink-800 border border-ink-700 text-white text-sm focus:outline-none focus:border-orange-600 cursor-pointer"
+              >
+                <option value="" disabled>Elige una diana…</option>
                 {available.map(d => (
-                  <button
-                    key={d.number}
-                    type="button"
-                    onClick={() => setSelected(d.number)}
-                    className={clsx(
-                      "h-10 rounded-lg text-sm font-bold border transition-all",
-                      selected === d.number
-                        ? "bg-orange-600 border-orange-500 text-white"
-                        : "bg-ink-800 border-ink-700 text-ink-300 hover:border-orange-600/50 hover:text-white",
-                    )}
-                  >
-                    {d.number}
-                  </button>
+                  <option key={d.number} value={d.number}>Diana {d.number}</option>
                 ))}
-              </div>
+              </select>
             )}
           </div>
 
