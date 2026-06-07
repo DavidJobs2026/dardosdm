@@ -157,6 +157,21 @@ function CallPlayerModal({ match, callNum, onClose, onConfirm }: CallPlayerModal
   );
 }
 
+// ─── localStorage helper (mirrors the key used in RRView) ─────────────────────
+
+function readGroupDianasForMatch(tournamentId: string, match: Match): number[] {
+  if (!match.rrGroup) return [];
+  try {
+    const lvl = match.bracketLevel ?? "default";
+    const raw = typeof window !== "undefined"
+      ? localStorage.getItem(`rrGroupDianas:${tournamentId}:${lvl}`)
+      : null;
+    if (!raw) return [];
+    const map = JSON.parse(raw) as Record<string, number[]>;
+    return map[match.rrGroup] ?? [];
+  } catch { return []; }
+}
+
 // ─── Match card in the queue ──────────────────────────────────────────────────
 
 interface MatchRowProps {
@@ -175,8 +190,14 @@ function MatchRow({ match, dianas, tournament, onDataChange, onReport, overdue }
   const [countdown, setCountdown]         = useState(0);
   const [showSelect, setShowSelect]       = useState(false);
 
-  const availableDianas = dianas.filter(d => !d.matchId || d.matchId === match.id);
-  const assignedDiana   = dianas.find(d => d.matchId === match.id);
+  // Dianas free for this match in general
+  let availableDianas = dianas.filter(d => !d.matchId || d.matchId === match.id);
+  // If this match belongs to an RR group with pre-assigned dianas, restrict to those
+  const groupDianas = readGroupDianasForMatch(tournament.id, match);
+  if (groupDianas.length > 0) {
+    availableDianas = availableDianas.filter(d => groupDianas.includes(d.number));
+  }
+  const assignedDiana = dianas.find(d => d.matchId === match.id);
 
   // Determine which call is next
   const callsDone = [match.launch1At, match.launch2At, match.launch3At].filter(Boolean).length;
