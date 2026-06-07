@@ -1017,12 +1017,35 @@ export function GestionTab({ tournament, matches, onMatchesChange }: GestionTabP
       .flatMap(m => [m.participant1?.id, m.participant2?.id].filter(Boolean) as string[])
   );
 
-  // Only show a match as available if BOTH players are free (not in an active match)
-  const unassignedMatches = pendingMatches.filter(m =>
-    !m.launch1At &&
-    !busyParticipantIds.has(m.participant1?.id ?? "__") &&
-    !busyParticipantIds.has(m.participant2?.id ?? "__")
-  );
+  // ── Round gating for RR matches ──────────────────────────────────────────
+  // For round-robin groups, only show the minimum (current) round per level.
+  // While any R1 match is still pending (launched or not), R2 should not
+  // appear as available — the organizer must complete the current round first.
+  // Non-RR (elimination) matches are never gated.
+  const minRRRoundByLevel: Record<string, number> = {};
+  pendingMatches
+    .filter(m => !!m.rrGroup)
+    .forEach(m => {
+      const key = m.bracketLevel ?? "__default__";
+      if (minRRRoundByLevel[key] === undefined || m.round < minRRRoundByLevel[key]) {
+        minRRRoundByLevel[key] = m.round;
+      }
+    });
+
+  // Only show a match as available if:
+  // 1. Not yet launched
+  // 2. Both players are free
+  // 3. For RR matches: it belongs to the current (minimum) round for its level
+  const unassignedMatches = pendingMatches.filter(m => {
+    if (m.launch1At) return false;
+    if (busyParticipantIds.has(m.participant1?.id ?? "__")) return false;
+    if (busyParticipantIds.has(m.participant2?.id ?? "__")) return false;
+    if (m.rrGroup) {
+      const minRound = minRRRoundByLevel[m.bracketLevel ?? "__default__"];
+      if (minRound !== undefined && m.round > minRound) return false;
+    }
+    return true;
+  });
 
   // Overdue: launched and elapsed time > estimatedMatchMinutes
   const thresholdMs = (tournament.estimatedMatchMinutes ?? 15) * 60 * 1000;
