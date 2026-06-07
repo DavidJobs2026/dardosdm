@@ -924,6 +924,7 @@ export function GestionTab({ tournament, matches, onMatchesChange }: GestionTabP
   const [selectedIds,      setSelectedIds]      = useState<Set<string>>(new Set());
   const [bulkDeleting,     setBulkDeleting]     = useState(false);
   const [confirmBulkDel,   setConfirmBulkDel]   = useState(false);
+  const [launchingLevels,  setLaunchingLevels]  = useState<Set<string>>(new Set());
 
   const loadDianas = useCallback(async () => {
     try {
@@ -936,6 +937,35 @@ export function GestionTab({ tournament, matches, onMatchesChange }: GestionTabP
   useEffect(() => { loadDianas(); }, [loadDianas]);
 
   const handleDataChange = () => { loadDianas(); onMatchesChange(); };
+
+  // Launch all diana-assigned matches for a given level in one click
+  const handleLaunchAll = async (lvl: string, lvlMatches: Match[]) => {
+    // Only matches that already have a diana assigned
+    const ready = lvlMatches.filter(m => dianas.some(d => d.matchId === m.id));
+    if (ready.length === 0) return;
+
+    setLaunchingLevels(prev => new Set([...prev, lvl]));
+    try {
+      await Promise.all(ready.map(async m => {
+        const assignedDiana = dianas.find(d => d.matchId === m.id);
+        await api.post(`/tournaments/${tournament.id}/matches/${m.id}/launch`);
+        if (assignedDiana) {
+          void announceMatch(
+            playerName(m.participant1),
+            playerName(m.participant2),
+            assignedDiana.number,
+            m.participant3 ? playerName(m.participant3) : undefined,
+          );
+        }
+      }));
+      toast.success(`${ready.length} partido${ready.length !== 1 ? "s" : ""} lanzado${ready.length !== 1 ? "s" : ""}`);
+    } catch (err: any) {
+      toast.error(err.response?.data?.message ?? "Error al lanzar");
+    } finally {
+      setLaunchingLevels(prev => { const n = new Set(prev); n.delete(lvl); return n; });
+      handleDataChange();
+    }
+  };
 
   const handleSetup = async () => {
     const n = Number(dianaCount);
@@ -1334,24 +1364,47 @@ export function GestionTab({ tournament, matches, onMatchesChange }: GestionTabP
                     <div className="h-px flex-1 bg-ink-800" />
                     <span className="text-[10px] text-ink-700">{unassignedMatches.length}</span>
                   </div>
-                  {groupByLevel(unassignedMatches).map(({ lvl, matches: lvlMatches }) => (
-                    <div key={lvl} className="space-y-2">
-                      <div className="flex items-center gap-2 pl-1">
-                        <span className="text-[10px] font-semibold text-ink-500">{lvl}</span>
-                        <div className="h-px flex-1 bg-ink-800/60" />
+                  {groupByLevel(unassignedMatches).map(({ lvl, matches: lvlMatches }) => {
+                    const readyCount = lvlMatches.filter(m => dianas.some(d => d.matchId === m.id)).length;
+                    const isLaunching = launchingLevels.has(lvl);
+                    return (
+                      <div key={lvl} className="space-y-2">
+                        <div className="flex items-center gap-2 pl-1">
+                          <span className="text-[10px] font-semibold text-ink-500">{lvl}</span>
+                          <div className="h-px flex-1 bg-ink-800/60" />
+                          {/* "Lanzar todos" — only shown when at least one match has a diana assigned */}
+                          {readyCount > 0 && (
+                            <button
+                              type="button"
+                              disabled={isLaunching}
+                              onClick={() => handleLaunchAll(lvl, lvlMatches)}
+                              className={clsx(
+                                "flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[10px] font-bold transition-all",
+                                isLaunching
+                                  ? "bg-emerald-900/30 text-emerald-600 cursor-not-allowed"
+                                  : "bg-emerald-700 hover:bg-emerald-600 text-white"
+                              )}
+                            >
+                              {isLaunching
+                                ? <><RefreshCw className="w-3 h-3 animate-spin" /> Lanzando…</>
+                                : <><Play className="w-3 h-3" /> Lanzar todos ({readyCount})</>
+                              }
+                            </button>
+                          )}
+                        </div>
+                        {lvlMatches.map(m => (
+                          <MatchRow
+                            key={m.id}
+                            match={m}
+                            dianas={dianas}
+                            tournament={tournament}
+                            onDataChange={handleDataChange}
+                            onReport={mm => setReportMatch(mm)}
+                          />
+                        ))}
                       </div>
-                      {lvlMatches.map(m => (
-                        <MatchRow
-                          key={m.id}
-                          match={m}
-                          dianas={dianas}
-                          tournament={tournament}
-                          onDataChange={handleDataChange}
-                          onReport={mm => setReportMatch(mm)}
-                        />
-                      ))}
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
 
