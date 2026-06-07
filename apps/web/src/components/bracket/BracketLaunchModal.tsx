@@ -11,11 +11,13 @@ import { announceMatch } from "@/lib/tts";
 interface Props {
   match:        Match;
   tournamentId: string;
+  /** When set, only dianas with these numbers are offered (group filter) */
+  groupDianas?: number[];
   onClose:      () => void;
   onSuccess:    () => void; // refresh bracket data
 }
 
-export function BracketLaunchModal({ match, tournamentId, onClose, onSuccess }: Props) {
+export function BracketLaunchModal({ match, tournamentId, groupDianas, onClose, onSuccess }: Props) {
   const [dianas,   setDianas]   = useState<Diana[]>([]);
   const [loading,  setLoading]  = useState(true);
   const [selected, setSelected] = useState<number | null>(
@@ -35,7 +37,11 @@ export function BracketLaunchModal({ match, tournamentId, onClose, onSuccess }: 
   }, [tournamentId]);
 
   // Free dianas + the one already assigned to this match
-  const available = dianas.filter(d => !d.matchId || d.matchId === match.id);
+  let available = dianas.filter(d => !d.matchId || d.matchId === match.id);
+  // When a group has pre-assigned dianas, restrict to those numbers only
+  if (groupDianas && groupDianas.length > 0) {
+    available = available.filter(d => groupDianas.includes(d.number));
+  }
 
   const handleLaunch = async () => {
     if (selected === null) { toast.error("Selecciona una diana"); return; }

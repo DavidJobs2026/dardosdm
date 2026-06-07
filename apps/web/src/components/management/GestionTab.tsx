@@ -938,8 +938,22 @@ export function GestionTab({ tournament, matches, onMatchesChange }: GestionTabP
 
   // A match stays on top until it has been launched (launch1At set).
   // Assigning a diana alone does NOT move it down — only pressing Lanzar does.
-  const launchedMatches   = pendingMatches.filter(m => !!m.launch1At);
-  const unassignedMatches = pendingMatches.filter(m => !m.launch1At);
+  const launchedMatches = pendingMatches.filter(m => !!m.launch1At);
+
+  // Busy participants: called in an active match (1st call done, 3rd not yet done).
+  // After 3 calls the backend allows re-scheduling so we mirror that logic here.
+  const busyParticipantIds = new Set<string>(
+    launchedMatches
+      .filter(m => !m.launch3At)
+      .flatMap(m => [m.participant1?.id, m.participant2?.id].filter(Boolean) as string[])
+  );
+
+  // Only show a match as available if BOTH players are free (not in an active match)
+  const unassignedMatches = pendingMatches.filter(m =>
+    !m.launch1At &&
+    !busyParticipantIds.has(m.participant1?.id ?? "__") &&
+    !busyParticipantIds.has(m.participant2?.id ?? "__")
+  );
 
   // Overdue: launched and elapsed time > estimatedMatchMinutes
   const thresholdMs = (tournament.estimatedMatchMinutes ?? 15) * 60 * 1000;

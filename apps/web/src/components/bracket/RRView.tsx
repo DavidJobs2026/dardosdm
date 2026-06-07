@@ -1,13 +1,13 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { Tournament, Match, Participant, RRGroup } from "@tournament/types";
+import { Tournament, Match, Participant, RRGroup, Diana } from "@tournament/types";
 import { api } from "@/lib/api";
 import toast from "react-hot-toast";
 import { clsx } from "clsx";
 import {
   CheckCircle, AlertTriangle, Zap, Trophy, RefreshCw,
-  ChevronRight, ChevronDown, Target, Clock, Play, RotateCcw,
+  ChevronRight, ChevronDown, Target, Clock, Play, RotateCcw, X,
 } from "lucide-react";
 import { format as fmtDate } from "date-fns";
 import { es } from "date-fns/locale";
@@ -217,13 +217,21 @@ function MatchCard({
 // ─── Group card ───────────────────────────────────────────────────────────────
 
 function GroupCard({
-  group, tournamentId, bracketLevel, advancingCount, isOrganizer, onDataChange, onMatchAction,
+  group, tournamentId, bracketLevel, advancingCount, isOrganizer,
+  dianas, groupDianasMap, onAssignDiana, onUnassignDiana,
+  onDataChange, onMatchAction,
 }: {
   group:          RRGroup & { matches: Match[] };
   tournamentId:   string;
   bracketLevel:   string | null;
   advancingCount: number;
   isOrganizer:    boolean;
+  /** All tournament dianas */
+  dianas:         Diana[];
+  /** Map of all group-diana assignments */
+  groupDianasMap: Record<string, number[]>;
+  onAssignDiana:   (groupName: string, num: number) => void;
+  onUnassignDiana: (groupName: string, num: number) => void;
   onDataChange:   () => void;
   onMatchAction:  (m: Match) => void;
 }) {
@@ -243,6 +251,23 @@ function GroupCard({
 
   const completedCount = queueMatches.filter(m => m.status === "completed").length;
   const totalCount     = queueMatches.length;
+
+  // ── Group-diana assignment helpers ────────────────────────────────────────
+  const assignedDianas = groupDianasMap[group.name] ?? [];
+  // How many dianas this group can have: floor(players / 2) simultaneous matches
+  const maxGroupDianas = Math.floor(participants.length / 2);
+  // Numbers already taken by other groups
+  const otherGroupNums = new Set<number>(
+    Object.entries(groupDianasMap)
+      .filter(([name]) => name !== group.name)
+      .flatMap(([, nums]) => nums)
+  );
+  // Free dianas: not in use, not broken, not reserved by another group
+  const freeDianas = dianas.filter(
+    d => !d.matchId && !d.broken && !otherGroupNums.has(d.number)
+  );
+  // Free dianas available to add (not already in this group)
+  const addableDianas = freeDianas.filter(d => !assignedDianas.includes(d.number));
 
   // Shared level payload — passed to every group endpoint so multi-level works correctly
   const levelPayload = bracketLevel != null ? { bracketLevel } : {};
@@ -306,8 +331,9 @@ function GroupCard({
     <div className="bg-ink-900 border border-ink-800 rounded-2xl overflow-hidden">
 
       {/* ── Header ── */}
-      <div className="flex items-center justify-between px-5 py-3 border-b border-ink-800 bg-gradient-to-r from-violet-900/15 to-transparent">
-        <div className="flex items-center gap-3">
+      <div className="flex flex-wrap items-center gap-3 px-5 py-3 border-b border-ink-800 bg-gradient-to-r from-violet-900/15 to-transparent">
+        {/* Group identity */}
+        <div className="flex items-center gap-3 flex-1 min-w-0">
           <span className="w-8 h-8 rounded-xl bg-violet-600/25 border border-violet-500/30 flex items-center justify-center text-violet-300 font-black text-base shrink-0">
             {group.name}
           </span>
@@ -318,6 +344,45 @@ function GroupCard({
             </p>
           </div>
         </div>
+
+        {/* Diana assignment (organizer only) */}
+        {isOrganizer && (
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <Target className="w-3 h-3 text-ink-500 shrink-0" />
+            {assignedDianas.map(num => (
+              <span key={num}
+                className="flex items-center gap-1 px-2 py-0.5 rounded-md bg-orange-900/30 border border-orange-700/40 text-orange-300 text-[11px] font-bold">
+                {num}
+                <button
+                  type="button"
+                  onClick={() => onUnassignDiana(group.name, num)}
+                  className="hover:text-white transition-colors ml-0.5"
+                  title="Quitar diana del grupo"
+                >
+                  <X className="w-2.5 h-2.5" />
+                </button>
+              </span>
+            ))}
+            {assignedDianas.length < maxGroupDianas && (
+              addableDianas.length > 0 ? (
+                <select
+                  value=""
+                  onChange={e => { if (e.target.value) onAssignDiana(group.name, Number(e.target.value)); }}
+                  className="h-6 px-1.5 rounded-md bg-[#1a1a1a] border border-[#333] text-orange-300 text-[11px] focus:outline-none focus:border-orange-600 cursor-pointer"
+                  title="Asignar diana a este grupo"
+                >
+                  <option value="" disabled>+ Diana</option>
+                  {addableDianas.map(d => (
+                    <option key={d.number} value={d.number}>Diana {d.number}</option>
+                  ))}
+                </select>
+              ) : (
+                <span className="text-[10px] text-ink-600 italic">Sin dianas libres</span>
+              )
+            )}
+          </div>
+        )}
+
         <div className="flex items-center gap-2">
           {/* Reset group button — only shown to organizers on non-reviewed groups */}
           {isOrganizer && !group.reviewed && (
@@ -535,6 +600,21 @@ interface Props {
   onDataChange:  () => void;
 }
 
+// ─── localStorage key helpers ─────────────────────────────────────────────────
+
+function lsKey(tournamentId: string) {
+  return `rrGroupDianas:${tournamentId}`;
+}
+function readGroupDianas(tournamentId: string): Record<string, number[]> {
+  try {
+    const raw = typeof window !== "undefined" ? localStorage.getItem(lsKey(tournamentId)) : null;
+    return raw ? (JSON.parse(raw) as Record<string, number[]>) : {};
+  } catch { return {}; }
+}
+function writeGroupDianas(tournamentId: string, map: Record<string, number[]>) {
+  try { localStorage.setItem(lsKey(tournamentId), JSON.stringify(map)); } catch { /* noop */ }
+}
+
 export function RRView({ tournament, matches, isOrganizer, hasKO = false, bracketLevel, onReport, onDataChange }: Props) {
   const [groups,           setGroups]           = useState<(RRGroup & { matches: Match[] })[]>([]);
   const [loading,          setLoading]          = useState(true);
@@ -543,6 +623,37 @@ export function RRView({ tournament, matches, isOrganizer, hasKO = false, bracke
   // Auto-collapse the RR section once the KO bracket is live so it doesn't
   // dominate the screen, but the user can always expand it again.
   const [collapsed,        setCollapsed]        = useState(hasKO);
+
+  // ── Group-diana state ──────────────────────────────────────────────────────
+  const [dianas,         setDianas]         = useState<Diana[]>([]);
+  const [groupDianasMap, setGroupDianasMap] = useState<Record<string, number[]>>(
+    () => readGroupDianas(tournament.id)
+  );
+
+  const loadDianas = useCallback(async () => {
+    try {
+      const res = await api.get(`/tournaments/${tournament.id}/dianas`);
+      setDianas(res.data.data ?? []);
+    } catch { /* silent */ }
+  }, [tournament.id]);
+
+  useEffect(() => { loadDianas(); }, [loadDianas]);
+
+  const handleAssignDiana = (groupName: string, num: number) => {
+    setGroupDianasMap(prev => {
+      const next = { ...prev, [groupName]: [...(prev[groupName] ?? []), num] };
+      writeGroupDianas(tournament.id, next);
+      return next;
+    });
+  };
+
+  const handleUnassignDiana = (groupName: string, num: number) => {
+    setGroupDianasMap(prev => {
+      const next = { ...prev, [groupName]: (prev[groupName] ?? []).filter(n => n !== num) };
+      writeGroupDianas(tournament.id, next);
+      return next;
+    });
+  };
 
   const advancingCount = tournament.rrAdvancingTeams ?? 2;
 
@@ -642,7 +753,11 @@ export function RRView({ tournament, matches, isOrganizer, hasKO = false, bracke
               bracketLevel={bracketLevel ?? null}
               advancingCount={advancingCount}
               isOrganizer={isOrganizer}
-              onDataChange={() => { loadStandings(); onDataChange(); }}
+              dianas={dianas}
+              groupDianasMap={groupDianasMap}
+              onAssignDiana={handleAssignDiana}
+              onUnassignDiana={handleUnassignDiana}
+              onDataChange={() => { loadStandings(); loadDianas(); onDataChange(); }}
               onMatchAction={(m) => {
                 if (m.isTiebreaker && m.participant3) {
                   // 3-player tiebreaker: launch first, then result

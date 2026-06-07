@@ -2494,19 +2494,33 @@ export default function TournamentDetailPage({ params }: { params: Promise<{ id:
       )}
 
       {/* Bracket Launch Modal — assign diana + first call for not-yet-launched matches */}
-      {launchMatch && (
-        <BracketLaunchModal
-          match={launchMatch}
-          tournamentId={id}
-          onClose={() => setLaunchMatch(null)}
-          onSuccess={async () => {
-            try {
-              const mRes = await api.get(`/tournaments/${id}/matches`);
-              setMatches(mRes.data.data);
-            } catch { /* silent */ }
-          }}
-        />
-      )}
+      {launchMatch && (() => {
+        // Read group-diana assignments from localStorage (written by RRView)
+        let groupDianas: number[] | undefined;
+        if (launchMatch.rrGroup) {
+          try {
+            const raw = typeof window !== "undefined"
+              ? localStorage.getItem(`rrGroupDianas:${id}`)
+              : null;
+            const map = raw ? (JSON.parse(raw) as Record<string, number[]>) : {};
+            groupDianas = map[launchMatch.rrGroup] ?? [];
+          } catch { /* noop */ }
+        }
+        return (
+          <BracketLaunchModal
+            match={launchMatch}
+            tournamentId={id}
+            groupDianas={groupDianas}
+            onClose={() => setLaunchMatch(null)}
+            onSuccess={async () => {
+              try {
+                const mRes = await api.get(`/tournaments/${id}/matches`);
+                setMatches(mRes.data.data);
+              } catch { /* silent */ }
+            }}
+          />
+        );
+      })()}
 
       {/* Edit Participant Metric Modal */}
       {editingParticipant && (
