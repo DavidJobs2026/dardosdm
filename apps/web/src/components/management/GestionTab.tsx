@@ -498,13 +498,15 @@ function MatchRow({ match, dianas, tournament, onDataChange, onReport, overdue }
 const MINI_CELL = 40; // px — compact spatial view
 
 interface DianaGridProps {
-  dianas:       Diana[];
-  onClickDiana: (d: Diana) => void;
-  selectMode?:  boolean;
-  selectedIds?: Set<string>;
+  dianas:            Diana[];
+  onClickDiana:      (d: Diana) => void;
+  selectMode?:       boolean;
+  selectedIds?:      Set<string>;
+  /** Diana numbers assigned to any RR group (reserved but not yet in use) */
+  groupAssignedNums?: Set<number>;
 }
 
-function DianaGrid({ dianas, onClickDiana, selectMode, selectedIds }: DianaGridProps) {
+function DianaGrid({ dianas, onClickDiana, selectMode, selectedIds, groupAssignedNums }: DianaGridProps) {
   // Check if any dianas have positions
   const hasPositions = dianas.some(d => d.posX != null);
 
@@ -523,6 +525,7 @@ function DianaGrid({ dianas, onClickDiana, selectMode, selectedIds }: DianaGridP
         {dianas.map(d => {
           const occupied  = !!d.matchId;
           const broken    = !!d.broken;
+          const groupRes  = !occupied && !broken && !!groupAssignedNums?.has(d.number);
           const isSel     = selectMode && selectedIds?.has(d.id);
           return (
             <button
@@ -536,9 +539,16 @@ function DianaGrid({ dianas, onClickDiana, selectMode, selectedIds }: DianaGridP
                   ? "bg-red-900/40 border-red-600/60 text-red-300 hover:bg-red-800/50 shadow-[0_0_8px_0_rgba(239,68,68,0.3)]"
                   : broken
                   ? "bg-amber-900/40 border-amber-600/60 text-amber-300 hover:bg-amber-800/50"
+                  : groupRes
+                  ? "bg-orange-900/40 border-orange-600/60 text-orange-300 hover:bg-orange-800/50"
                   : "bg-green-900/30 border-green-700/40 text-green-400 hover:bg-green-800/40"
               )}
-              title={occupied ? `Diana ${d.number} — En uso` : broken ? `Diana ${d.number} — Averiada` : `Diana ${d.number} — Libre`}
+              title={
+                occupied  ? `Diana ${d.number} — En uso` :
+                broken    ? `Diana ${d.number} — Averiada` :
+                groupRes  ? `Diana ${d.number} — Asignada a grupo` :
+                            `Diana ${d.number} — Libre`
+              }
             >
               {d.number}
               {isSel && (
@@ -551,6 +561,9 @@ function DianaGrid({ dianas, onClickDiana, selectMode, selectedIds }: DianaGridP
               )}
               {!isSel && broken && !occupied && (
                 <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-amber-500 border border-[#1a1a1a]" />
+              )}
+              {!isSel && groupRes && (
+                <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-orange-500 border border-[#1a1a1a]" />
               )}
             </button>
           );
@@ -585,12 +598,18 @@ function DianaGrid({ dianas, onClickDiana, selectMode, selectedIds }: DianaGridP
                 {roomDianas.map(d => {
                   const occupied = !!d.matchId;
                   const broken   = !!d.broken;
+                  const groupRes = !occupied && !broken && !!groupAssignedNums?.has(d.number);
                   const isSel    = selectMode && selectedIds?.has(d.id);
                   return (
                     <button
                       key={d.id}
                       onClick={() => onClickDiana(d)}
-                      title={occupied ? `Diana ${d.number} — En uso` : broken ? `Diana ${d.number} — Averiada` : `Diana ${d.number} — Libre`}
+                      title={
+                        occupied  ? `Diana ${d.number} — En uso` :
+                        broken    ? `Diana ${d.number} — Averiada` :
+                        groupRes  ? `Diana ${d.number} — Asignada a grupo` :
+                                    `Diana ${d.number} — Libre`
+                      }
                       className={clsx(
                         "absolute flex items-center justify-center rounded-lg font-bold text-xs border-2 transition-all",
                         isSel
@@ -599,6 +618,8 @@ function DianaGrid({ dianas, onClickDiana, selectMode, selectedIds }: DianaGridP
                           ? "bg-red-900/50 border-red-600/60 text-red-300 hover:bg-red-800/60 shadow-[0_0_6px_0_rgba(239,68,68,0.3)]"
                           : broken
                           ? "bg-amber-900/40 border-amber-600/60 text-amber-300 hover:bg-amber-800/50"
+                          : groupRes
+                          ? "bg-orange-900/40 border-orange-600/60 text-orange-300 hover:bg-orange-800/50"
                           : "bg-green-900/30 border-green-700/40 text-green-400 hover:bg-green-800/40"
                       )}
                       style={{
@@ -620,6 +641,9 @@ function DianaGrid({ dianas, onClickDiana, selectMode, selectedIds }: DianaGridP
                       {!isSel && broken && !occupied && (
                         <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-amber-500 border border-[#1a1a1a]" />
                       )}
+                      {!isSel && groupRes && (
+                        <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-orange-500 border border-[#1a1a1a]" />
+                      )}
                     </button>
                   );
                 })}
@@ -635,6 +659,7 @@ function DianaGrid({ dianas, onClickDiana, selectMode, selectedIds }: DianaGridP
             {unpositioned.map(d => {
               const occupied = !!d.matchId;
               const broken   = !!d.broken;
+              const groupRes = !occupied && !broken && !!groupAssignedNums?.has(d.number);
               const isSel    = selectMode && selectedIds?.has(d.id);
               return (
                 <button
@@ -648,6 +673,8 @@ function DianaGrid({ dianas, onClickDiana, selectMode, selectedIds }: DianaGridP
                       ? "bg-red-900/40 border-red-600/60 text-red-300"
                       : broken
                       ? "bg-amber-900/40 border-amber-600/60 text-amber-300 hover:bg-amber-800/50"
+                      : groupRes
+                      ? "bg-orange-900/40 border-orange-600/60 text-orange-300 hover:bg-orange-800/50"
                       : "bg-green-900/30 border-green-700/40 text-green-400 hover:bg-green-800/40"
                   )}
                 >
@@ -662,6 +689,9 @@ function DianaGrid({ dianas, onClickDiana, selectMode, selectedIds }: DianaGridP
                   )}
                   {!isSel && broken && !occupied && (
                     <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-amber-500 border border-[#1a1a1a]" />
+                  )}
+                  {!isSel && groupRes && (
+                    <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-orange-500 border border-[#1a1a1a]" />
                   )}
                 </button>
               );
@@ -853,6 +883,24 @@ function DianaDetail({ diana, dianas, tournament, onDataChange, onReport, onClos
       )}
     </div>
   );
+}
+
+// ─── Helper: collect all group-assigned diana numbers from localStorage ───────
+
+function getAllGroupAssignedDianas(tournamentId: string): Set<number> {
+  const result = new Set<number>();
+  try {
+    if (typeof window === "undefined") return result;
+    const prefix = `rrGroupDianas:${tournamentId}:`;
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && key.startsWith(prefix)) {
+        const map = JSON.parse(localStorage.getItem(key) ?? "{}") as Record<string, number[]>;
+        Object.values(map).flat().forEach(n => result.add(n));
+      }
+    }
+  } catch { /* noop */ }
+  return result;
 }
 
 // ─── Main GestionTab ──────────────────────────────────────────────────────────
@@ -1094,10 +1142,14 @@ export function GestionTab({ tournament, matches, onMatchesChange }: GestionTabP
           )}
 
           {/* Legend */}
-          <div className="flex items-center gap-4 text-[11px] text-ink-600">
+          <div className="flex items-center gap-4 text-[11px] text-ink-600 flex-wrap">
             <span className="flex items-center gap-1.5">
               <span className="w-3 h-3 rounded bg-green-900/50 border border-green-700/50" />
               Libre
+            </span>
+            <span className="flex items-center gap-1.5">
+              <span className="w-3 h-3 rounded bg-orange-900/50 border border-orange-600/50" />
+              Asignada (grupo)
             </span>
             <span className="flex items-center gap-1.5">
               <span className="w-3 h-3 rounded bg-red-900/50 border border-red-600/50" />
@@ -1178,6 +1230,7 @@ export function GestionTab({ tournament, matches, onMatchesChange }: GestionTabP
               onClickDiana={handleClickDiana}
               selectMode={selectMode}
               selectedIds={selectedIds}
+              groupAssignedNums={getAllGroupAssignedDianas(tournament.id)}
             />
           )}
 
