@@ -15,7 +15,7 @@ import {
 } from "../controllers/participant.controller";
 import { listMatches, getMatch, reportResult, repairBracket, resetMatchResult } from "../controllers/match.controller";
 import { listReferees, getMyReferee, addReferee, removeReferee } from "../controllers/referee.controller";
-import { listDianas, setupDianas, saveLayout, assignDiana, unassignDiana, deleteDiana, bulkDeleteDianas, toggleBrokenDiana, launchMatch, noShowMatch } from "../controllers/diana.controller";
+import { listDianas, setupDianas, saveLayout, assignDiana, unassignDiana, deleteDiana, bulkDeleteDianas, toggleBrokenDiana, launchMatch, noShowMatch, recallMatch } from "../controllers/diana.controller";
 import { authenticate, requireRole, optionalAuthenticate } from "../middlewares/auth.middleware";
 import { tournamentImageUpload } from "../middlewares/upload.middleware";
 import { uploadTournamentImage, removeTournamentImage } from "../controllers/tournament.controller";
@@ -77,6 +77,7 @@ export default function tournamentRoutes(io: SocketServer): Router {
   router.post("/:id/matches/:matchId/assign-diana", authenticate, assignDiana);
   router.delete("/:id/matches/:matchId/diana", authenticate, unassignDiana);
   router.post("/:id/matches/:matchId/launch", authenticate, launchMatch);
+  router.post("/:id/matches/:matchId/recall", authenticate, recallMatch);
   router.post("/:id/matches/:matchId/no-show", authenticate, noShowMatch(io));
 
   // Round Robin

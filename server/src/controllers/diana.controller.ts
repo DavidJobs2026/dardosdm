@@ -345,6 +345,66 @@ export const launchMatch = async (req: AuthRequest, res: Response, next: NextFun
   } catch (err) { next(err); }
 };
 
+// ─── Recall (árbitro o organizador re-emite una llamada al altavoz central) ───
+export const recallMatch = async (req: AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    const { callNumber } = z.object({ callNumber: z.number().int().min(1).max(3) }).parse(req.body);
+
+    const tournament = await prisma.tournament.findUnique({ where: { id: req.params.id } });
+    if (!tournament) return next(notFound("Tournament"));
+
+    const isOrganizer =
+      tournament.createdById === req.user!.userId ||
+      req.user!.role === "admin" ||
+      req.user!.role === "organizer";
+
+    // Non-organizers must be a registered referee for this tournament
+    let refereeRecord: { dianaStart: number | null; dianaEnd: number | null } | null = null;
+    if (!isOrganizer) {
+      refereeRecord = await prisma.tournamentReferee.findUnique({
+        where: { tournamentId_userId: { tournamentId: req.params.id, userId: req.user!.userId } },
+        select: { dianaStart: true, dianaEnd: true },
+      });
+      if (!refereeRecord) return next(forbidden());
+    }
+
+    const match = await prisma.match.findUnique({
+      where: { id: req.params.matchId },
+      include: {
+        participant1: { select: { user: { select: { name: true } }, team: { select: { name: true } } } },
+        participant2: { select: { user: { select: { name: true } }, team: { select: { name: true } } } },
+        diana: { select: { number: true } },
+      },
+    });
+    if (!match) return next(notFound("Match"));
+    if (match.tournamentId !== req.params.id) return next(notFound("Match"));
+    if (match.status === "completed" || match.status === "bye")
+      return next(badRequest("Este partido ya ha terminado"));
+    if (!match.launch1At)
+      return next(badRequest("El partido no ha sido lanzado aún"));
+    if (!match.diana?.number)
+      return next(badRequest("El partido no tiene diana asignada"));
+
+    // Verify the diana is within the referee's assigned range
+    if (refereeRecord) {
+      const { dianaStart, dianaEnd } = refereeRecord;
+      const num = match.diana.number;
+      const inRange =
+        (dianaStart == null && dianaEnd == null) ||
+        (dianaStart != null && dianaEnd != null && num >= dianaStart && num <= dianaEnd) ||
+        (dianaStart != null && dianaEnd == null && num >= dianaStart) ||
+        (dianaStart == null && dianaEnd != null && num <= dianaEnd);
+      if (!inRange) return next(forbidden());
+    }
+
+    const p1 = match.participant1?.user?.name ?? match.participant1?.team?.name ?? "Jugador 1";
+    const p2 = match.participant2?.user?.name ?? match.participant2?.team?.name ?? "Jugador 2";
+    emitAnnouncement(match.tournamentId, { p1, p2, diana: match.diana.number, callNumber });
+
+    return res.json({ data: { callNumber }, message: `Llamada ${callNumber} enviada al altavoz` });
+  } catch (err) { next(err); }
+};
+
 // ─── No-show ──────────────────────────────────────────────────────────────────
 export const noShowMatch = (io: SocketServer) =>
   async (req: AuthRequest, res: Response, next: NextFunction) => {
