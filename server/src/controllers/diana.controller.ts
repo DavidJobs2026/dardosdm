@@ -397,6 +397,27 @@ export const recallMatch = async (req: AuthRequest, res: Response, next: NextFun
       if (!inRange) return next(forbidden());
     }
 
+    // ── Cooldown: same timing rules as launchMatch ──────────────────────────
+    const now = new Date();
+    if (callNumber === 2) {
+      // 2ª llamada: requires at least LAUNCH_COOLDOWN_MS since the 1st call
+      const elapsed = now.getTime() - new Date(match.launch1At!).getTime();
+      if (elapsed < LAUNCH_COOLDOWN_MS) {
+        const rem = Math.ceil((LAUNCH_COOLDOWN_MS - elapsed) / 1000);
+        return next(badRequest(`Espera ${rem}s más para la segunda llamada`));
+      }
+    }
+    if (callNumber === 3) {
+      // 3ª llamada: requires launch2At to exist AND at least LAUNCH_COOLDOWN_MS since it
+      if (!match.launch2At)
+        return next(badRequest("Realiza la segunda llamada antes de la tercera"));
+      const elapsed = now.getTime() - new Date(match.launch2At).getTime();
+      if (elapsed < LAUNCH_COOLDOWN_MS) {
+        const rem = Math.ceil((LAUNCH_COOLDOWN_MS - elapsed) / 1000);
+        return next(badRequest(`Espera ${rem}s más para la tercera llamada`));
+      }
+    }
+
     const p1 = match.participant1?.user?.name ?? match.participant1?.team?.name ?? "Jugador 1";
     const p2 = match.participant2?.user?.name ?? match.participant2?.team?.name ?? "Jugador 2";
     emitAnnouncement(match.tournamentId, { p1, p2, diana: match.diana.number, callNumber });

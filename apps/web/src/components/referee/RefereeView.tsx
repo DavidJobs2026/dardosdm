@@ -84,9 +84,10 @@ export function RefereeView({ tournament, refereeData, onReport }: Props) {
       await api.post(`/tournaments/${tournament.id}/matches/${matchId}/recall`, { callNumber });
       setRecallFeedback(prev => ({ ...prev, [matchId]: `📢 ${callNumber}ª llamada enviada` }));
       setTimeout(() => setRecallFeedback(prev => { const n = { ...prev }; delete n[matchId]; return n; }), 3000);
-    } catch {
-      setRecallFeedback(prev => ({ ...prev, [matchId]: "Error al enviar" }));
-      setTimeout(() => setRecallFeedback(prev => { const n = { ...prev }; delete n[matchId]; return n; }), 3000);
+    } catch (err: any) {
+      const msg = err?.response?.data?.message ?? "Error al enviar";
+      setRecallFeedback(prev => ({ ...prev, [matchId]: `⏳ ${msg}` }));
+      setTimeout(() => setRecallFeedback(prev => { const n = { ...prev }; delete n[matchId]; return n; }), 5000);
     } finally {
       setRecalling(prev => { const n = { ...prev }; delete n[matchId]; return n; });
     }
@@ -157,7 +158,10 @@ export function RefereeView({ tournament, refereeData, onReport }: Props) {
                     {/* Row 2: recall buttons */}
                     <div className="flex items-center gap-2 pt-0.5">
                       {feedback ? (
-                        <span className="text-xs text-violet-300 font-medium">{feedback}</span>
+                        <span className={clsx(
+                          "text-xs font-medium",
+                          feedback.startsWith("⏳") ? "text-amber-400" : "text-violet-300"
+                        )}>{feedback}</span>
                       ) : (
                         <>
                           {can2nd && (
