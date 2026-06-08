@@ -34,6 +34,12 @@ function useCountdown(readyAtMs: number | null): number {
   return secs;
 }
 
+// ── helpers ────────────────────────────────────────────────────────────────────
+function fmtTime(iso: string) {
+  const d = new Date(iso);
+  return d.toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" });
+}
+
 // ── ActiveMatchCard ────────────────────────────────────────────────────────────
 interface ActiveMatchCardProps {
   m: Match;
@@ -49,11 +55,17 @@ function ActiveMatchCard({ m, onReport, onRecall, feedback, isRecalling, recalli
   const readyFor2nd = m.launch1At ? new Date(m.launch1At).getTime() + COOLDOWN_MS : null;
   const readyFor3rd = m.launch2At ? new Date(m.launch2At).getTime() + COOLDOWN_MS : null;
 
-  const secs2 = useCountdown(readyFor2nd); // 0 = 2nd call available
-  const secs3 = useCountdown(readyFor3rd); // 0 = 3rd call available (requires launch2At)
+  const secs2 = useCountdown(readyFor2nd);
+  const secs3 = useCountdown(readyFor3rd);
 
-  const can2nd = secs2 === 0;
-  const can3rd = !!m.launch2At && secs3 === 0;
+  // A call can only be triggered once — once the timestamp is recorded it becomes a label
+  const show2ndButton = !m.launch2At && secs2 === 0;   // not yet done + cooldown passed
+  const show2ndTimer  = !m.launch2At && secs2 > 0;     // not yet done + still waiting
+  // launch2At already set → show as label (see below)
+
+  const show3rdButton = !m.launch3At && !!m.launch2At && secs3 === 0;
+  const show3rdTimer  = !m.launch3At && !!m.launch2At && secs3 > 0;
+  // launch3At already set → show as label
 
   return (
     <div className="bg-ink-900 border border-green-800/40 rounded-xl p-3 space-y-2">
@@ -78,53 +90,66 @@ function ActiveMatchCard({ m, onReport, onRecall, feedback, isRecalling, recalli
         </button>
       </div>
 
-      {/* Row 2: countdown + recall buttons */}
+      {/* Row 2: call history + countdown + recall buttons */}
       <div className="flex items-center gap-2 pt-0.5 flex-wrap">
-        {feedback ? (
-          <span className={clsx(
-            "text-xs font-medium",
-            feedback.startsWith("⏳") ? "text-amber-400" : "text-violet-300"
-          )}>{feedback}</span>
-        ) : (
-          <>
-            {/* 2ª llamada */}
-            {m.launch1At && (
-              can2nd ? (
-                <button
-                  disabled={isRecalling}
-                  onClick={() => onRecall(m.id, 2)}
-                  className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold bg-violet-900/40 border border-violet-700/50 text-violet-300 hover:bg-violet-800/50 disabled:opacity-50 transition-colors"
-                >
-                  <Volume2 className="w-3 h-3" />
-                  {isRecalling && recallingNum === 2 ? "…" : "2ª llamada"}
-                </button>
-              ) : (
-                <span className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold bg-ink-800 border border-ink-700 text-ink-500 select-none">
-                  <Clock className="w-3 h-3" />
-                  2ª en {secs2}s
-                </span>
-              )
-            )}
+        {/* ── 1ª llamada (always a label once launched) ── */}
+        {m.launch1At && (
+          <span className="flex items-center gap-1 text-[11px] text-ink-500 font-mono">
+            <Clock className="w-3 h-3" />1ª {fmtTime(m.launch1At)}
+          </span>
+        )}
 
-            {/* 3ª llamada */}
-            {m.launch2At && (
-              can3rd ? (
-                <button
-                  disabled={isRecalling}
-                  onClick={() => onRecall(m.id, 3)}
-                  className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold bg-orange-900/40 border border-orange-700/50 text-orange-300 hover:bg-orange-800/50 disabled:opacity-50 transition-colors"
-                >
-                  <Volume2 className="w-3 h-3" />
-                  {isRecalling && recallingNum === 3 ? "…" : "3ª llamada"}
-                </button>
-              ) : (
-                <span className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold bg-ink-800 border border-ink-700 text-ink-500 select-none">
-                  <Clock className="w-3 h-3" />
-                  3ª en {secs3}s
-                </span>
-              )
-            )}
-          </>
+        {/* ── 2ª llamada ── */}
+        {m.launch2At ? (
+          // Already done → show timestamp
+          <span className="flex items-center gap-1 text-[11px] text-ink-500 font-mono">
+            <Clock className="w-3 h-3" />2ª {fmtTime(m.launch2At)}
+          </span>
+        ) : show2ndButton ? (
+          feedback ? (
+            <span className={clsx("text-xs font-medium", feedback.startsWith("⏳") ? "text-amber-400" : "text-violet-300")}>{feedback}</span>
+          ) : (
+            <button
+              disabled={isRecalling}
+              onClick={() => onRecall(m.id, 2)}
+              className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold bg-violet-900/40 border border-violet-700/50 text-violet-300 hover:bg-violet-800/50 disabled:opacity-50 transition-colors"
+            >
+              <Volume2 className="w-3 h-3" />
+              {isRecalling && recallingNum === 2 ? "…" : "2ª llamada"}
+            </button>
+          )
+        ) : show2ndTimer ? (
+          <span className="flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-mono bg-ink-800 text-ink-500 select-none">
+            <Clock className="w-3 h-3" />2ª en {secs2}s
+          </span>
+        ) : null}
+
+        {/* ── 3ª llamada ── */}
+        {m.launch3At ? (
+          // Already done → show timestamp
+          <span className="flex items-center gap-1 text-[11px] text-ink-500 font-mono">
+            <Clock className="w-3 h-3" />3ª {fmtTime(m.launch3At)}
+          </span>
+        ) : show3rdButton ? (
+          feedback ? null : (
+            <button
+              disabled={isRecalling}
+              onClick={() => onRecall(m.id, 3)}
+              className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold bg-orange-900/40 border border-orange-700/50 text-orange-300 hover:bg-orange-800/50 disabled:opacity-50 transition-colors"
+            >
+              <Volume2 className="w-3 h-3" />
+              {isRecalling && recallingNum === 3 ? "…" : "3ª llamada"}
+            </button>
+          )
+        ) : show3rdTimer ? (
+          <span className="flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-mono bg-ink-800 text-ink-500 select-none">
+            <Clock className="w-3 h-3" />3ª en {secs3}s
+          </span>
+        ) : null}
+
+        {/* feedback for 3rd call (shown outside the button block) */}
+        {feedback && !show2ndButton && (
+          <span className={clsx("text-xs font-medium", feedback.startsWith("⏳") ? "text-amber-400" : "text-violet-300")}>{feedback}</span>
         )}
       </div>
     </div>
