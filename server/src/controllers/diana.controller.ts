@@ -418,6 +418,18 @@ export const recallMatch = async (req: AuthRequest, res: Response, next: NextFun
       }
     }
 
+    // ── Record the timestamp if not already set by organizer ────────────────
+    // This keeps Gestión in sync (countdown based on launch2At / launch3At)
+    // and lets both panels share the same time reference.
+    if (callNumber === 2 && !match.launch2At) {
+      await prisma.match.update({ where: { id: match.id }, data: { launch2At: now } });
+      broadcastMatch(match.id).catch(() => {});
+    }
+    if (callNumber === 3 && !match.launch3At) {
+      await prisma.match.update({ where: { id: match.id }, data: { launch3At: now } });
+      broadcastMatch(match.id).catch(() => {});
+    }
+
     const p1 = match.participant1?.user?.name ?? match.participant1?.team?.name ?? "Jugador 1";
     const p2 = match.participant2?.user?.name ?? match.participant2?.team?.name ?? "Jugador 2";
     emitAnnouncement(match.tournamentId, { p1, p2, diana: match.diana.number, callNumber });

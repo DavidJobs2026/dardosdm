@@ -7,6 +7,132 @@ import { clsx } from "clsx";
 import type { Diana, Match, Tournament } from "@tournament/types";
 import { useSocket } from "@/hooks/useSocket";
 
+// ── Constants ──────────────────────────────────────────────────────────────────
+const COOLDOWN_MS = 5 * 60 * 1000; // must match server LAUNCH_COOLDOWN_MS
+
+// ── useCountdown ──────────────────────────────────────────────────────────────
+// Returns seconds remaining until `readyAtMs`. 0 means "ready now".
+// null means "not applicable" (returns 0).
+function useCountdown(readyAtMs: number | null): number {
+  const initial = readyAtMs == null ? 0 : Math.max(0, Math.ceil((readyAtMs - Date.now()) / 1000));
+  const [secs, setSecs] = useState(initial);
+
+  useEffect(() => {
+    if (readyAtMs == null) { setSecs(0); return; }
+    const remaining = Math.max(0, Math.ceil((readyAtMs - Date.now()) / 1000));
+    if (remaining <= 0) { setSecs(0); return; }
+    setSecs(remaining);
+    const id = setInterval(() => {
+      setSecs(prev => {
+        if (prev <= 1) { clearInterval(id); return 0; }
+        return prev - 1;
+      });
+    }, 1000);
+    return () => clearInterval(id);
+  }, [readyAtMs]);
+
+  return secs;
+}
+
+// ── ActiveMatchCard ────────────────────────────────────────────────────────────
+interface ActiveMatchCardProps {
+  m: Match;
+  onReport: (m: Match) => void;
+  onRecall: (matchId: string, callNumber: number) => Promise<void>;
+  feedback: string | undefined;
+  isRecalling: boolean;
+  recallingNum: number | undefined;
+}
+
+function ActiveMatchCard({ m, onReport, onRecall, feedback, isRecalling, recallingNum }: ActiveMatchCardProps) {
+  // readyAt = timestamp (ms) when the next call becomes unlocked
+  const readyFor2nd = m.launch1At ? new Date(m.launch1At).getTime() + COOLDOWN_MS : null;
+  const readyFor3rd = m.launch2At ? new Date(m.launch2At).getTime() + COOLDOWN_MS : null;
+
+  const secs2 = useCountdown(readyFor2nd); // 0 = 2nd call available
+  const secs3 = useCountdown(readyFor3rd); // 0 = 3rd call available (requires launch2At)
+
+  const can2nd = secs2 === 0;
+  const can3rd = !!m.launch2At && secs3 === 0;
+
+  return (
+    <div className="bg-ink-900 border border-green-800/40 rounded-xl p-3 space-y-2">
+      {/* Row 1: diana + names + result */}
+      <div className="flex items-center gap-3">
+        <div className="w-10 h-10 rounded-lg bg-red-900/30 border border-red-600/40 flex items-center justify-center text-red-300 font-bold text-sm shrink-0">
+          {m.diana?.number}
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-semibold text-white truncate">
+            {m.participant1?.user?.name ?? m.participant1?.team?.name ?? "—"}
+          </p>
+          <p className="text-xs text-ink-400 truncate">
+            vs {m.participant2?.user?.name ?? m.participant2?.team?.name ?? "—"}
+          </p>
+        </div>
+        <button
+          onClick={() => onReport(m)}
+          className="px-3 py-1.5 rounded-lg text-xs font-bold bg-green-700 hover:bg-green-600 text-white transition-colors shrink-0"
+        >
+          <Trophy className="w-3.5 h-3.5 inline mr-1" />Resultado
+        </button>
+      </div>
+
+      {/* Row 2: countdown + recall buttons */}
+      <div className="flex items-center gap-2 pt-0.5 flex-wrap">
+        {feedback ? (
+          <span className={clsx(
+            "text-xs font-medium",
+            feedback.startsWith("⏳") ? "text-amber-400" : "text-violet-300"
+          )}>{feedback}</span>
+        ) : (
+          <>
+            {/* 2ª llamada */}
+            {m.launch1At && (
+              can2nd ? (
+                <button
+                  disabled={isRecalling}
+                  onClick={() => onRecall(m.id, 2)}
+                  className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold bg-violet-900/40 border border-violet-700/50 text-violet-300 hover:bg-violet-800/50 disabled:opacity-50 transition-colors"
+                >
+                  <Volume2 className="w-3 h-3" />
+                  {isRecalling && recallingNum === 2 ? "…" : "2ª llamada"}
+                </button>
+              ) : (
+                <span className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold bg-ink-800 border border-ink-700 text-ink-500 select-none">
+                  <Clock className="w-3 h-3" />
+                  2ª en {secs2}s
+                </span>
+              )
+            )}
+
+            {/* 3ª llamada */}
+            {m.launch2At && (
+              can3rd ? (
+                <button
+                  disabled={isRecalling}
+                  onClick={() => onRecall(m.id, 3)}
+                  className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold bg-orange-900/40 border border-orange-700/50 text-orange-300 hover:bg-orange-800/50 disabled:opacity-50 transition-colors"
+                >
+                  <Volume2 className="w-3 h-3" />
+                  {isRecalling && recallingNum === 3 ? "…" : "3ª llamada"}
+                </button>
+              ) : (
+                <span className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold bg-ink-800 border border-ink-700 text-ink-500 select-none">
+                  <Clock className="w-3 h-3" />
+                  3ª en {secs3}s
+                </span>
+              )
+            )}
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── Main component ─────────────────────────────────────────────────────────────
+
 interface RefereeAssignment {
   id: string;
   dianaStart: number | null;
@@ -74,8 +200,7 @@ export function RefereeView({ tournament, refereeData, onReport }: Props) {
     m.diana &&
     myDianaNumbers.has(m.diana.number)
   );
-  // A diana is "in use" only when there's actually a live match at it —
-  // d.matchId alone is not enough (it gets set on assignment, before launch)
+  // A diana is "in use" only when there's actually a live match at it
   const activeDianaNumbers = new Set(activeMatches.map(m => m.diana!.number));
 
   const handleRecall = useCallback(async (matchId: string, callNumber: number) => {
@@ -83,6 +208,8 @@ export function RefereeView({ tournament, refereeData, onReport }: Props) {
     try {
       await api.post(`/tournaments/${tournament.id}/matches/${matchId}/recall`, { callNumber });
       setRecallFeedback(prev => ({ ...prev, [matchId]: `📢 ${callNumber}ª llamada enviada` }));
+      // Reload matches so launch2At/3At reflect the recorded timestamp
+      loadData();
       setTimeout(() => setRecallFeedback(prev => { const n = { ...prev }; delete n[matchId]; return n; }), 3000);
     } catch (err: any) {
       const msg = err?.response?.data?.message ?? "Error al enviar";
@@ -91,7 +218,7 @@ export function RefereeView({ tournament, refereeData, onReport }: Props) {
     } finally {
       setRecalling(prev => { const n = { ...prev }; delete n[matchId]; return n; });
     }
-  }, [tournament.id]);
+  }, [tournament.id, loadData]);
 
   const rangeLabel = refereeData.dianaStart != null
     ? refereeData.dianaEnd != null
@@ -126,70 +253,17 @@ export function RefereeView({ tournament, refereeData, onReport }: Props) {
               <span className="w-2 h-2 rounded-full bg-green-400 animate-pulse" /> En juego
             </h2>
             <div className="space-y-2">
-              {activeMatches.map(m => {
-                const isRecalling = !!recalling[m.id];
-                const feedback = recallFeedback[m.id];
-                // Determine which recall buttons to show:
-                // 2ª always available if match launched; 3ª only if 2ª was already done
-                const can2nd = !!m.launch1At;
-                const can3rd = !!m.launch2At;
-                return (
-                  <div key={m.id} className="bg-ink-900 border border-green-800/40 rounded-xl p-3 space-y-2">
-                    {/* Row 1: diana + names + result */}
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-lg bg-red-900/30 border border-red-600/40 flex items-center justify-center text-red-300 font-bold text-sm shrink-0">
-                        {m.diana?.number}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-semibold text-white truncate">
-                          {m.participant1?.user?.name ?? m.participant1?.team?.name ?? "—"}
-                        </p>
-                        <p className="text-xs text-ink-400 truncate">
-                          vs {m.participant2?.user?.name ?? m.participant2?.team?.name ?? "—"}
-                        </p>
-                      </div>
-                      <button
-                        onClick={() => onReport(m)}
-                        className="px-3 py-1.5 rounded-lg text-xs font-bold bg-green-700 hover:bg-green-600 text-white transition-colors shrink-0"
-                      >
-                        <Trophy className="w-3.5 h-3.5 inline mr-1" />Resultado
-                      </button>
-                    </div>
-                    {/* Row 2: recall buttons */}
-                    <div className="flex items-center gap-2 pt-0.5">
-                      {feedback ? (
-                        <span className={clsx(
-                          "text-xs font-medium",
-                          feedback.startsWith("⏳") ? "text-amber-400" : "text-violet-300"
-                        )}>{feedback}</span>
-                      ) : (
-                        <>
-                          {can2nd && (
-                            <button
-                              disabled={isRecalling}
-                              onClick={() => handleRecall(m.id, 2)}
-                              className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold bg-violet-900/40 border border-violet-700/50 text-violet-300 hover:bg-violet-800/50 disabled:opacity-50 transition-colors"
-                            >
-                              <Volume2 className="w-3 h-3" />
-                              {isRecalling && recalling[m.id] === 2 ? "…" : "2ª llamada"}
-                            </button>
-                          )}
-                          {can3rd && (
-                            <button
-                              disabled={isRecalling}
-                              onClick={() => handleRecall(m.id, 3)}
-                              className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold bg-orange-900/40 border border-orange-700/50 text-orange-300 hover:bg-orange-800/50 disabled:opacity-50 transition-colors"
-                            >
-                              <Volume2 className="w-3 h-3" />
-                              {isRecalling && recalling[m.id] === 3 ? "…" : "3ª llamada"}
-                            </button>
-                          )}
-                        </>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
+              {activeMatches.map(m => (
+                <ActiveMatchCard
+                  key={m.id}
+                  m={m}
+                  onReport={onReport}
+                  onRecall={handleRecall}
+                  feedback={recallFeedback[m.id]}
+                  isRecalling={!!recalling[m.id]}
+                  recallingNum={recalling[m.id]}
+                />
+              ))}
             </div>
           </div>
         )}
