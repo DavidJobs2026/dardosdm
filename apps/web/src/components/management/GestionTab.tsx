@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { api } from "@/lib/api";
 import { Match, Diana, Tournament, Participant } from "@tournament/types";
 import { clsx } from "clsx";
@@ -946,9 +946,10 @@ interface GestionTabProps {
   onMatchesChange: () => void;
   onAnnouncerSpeak?: (cb: (payload: any) => void) => (() => void);
   emitSocket?: (event: string, ...args: any[]) => void;
+  socketConnected?: boolean;
 }
 
-export function GestionTab({ tournament, matches, onMatchesChange, onAnnouncerSpeak, emitSocket }: GestionTabProps) {
+export function GestionTab({ tournament, matches, onMatchesChange, onAnnouncerSpeak, emitSocket, socketConnected }: GestionTabProps) {
   const [dianas, setDianas]               = useState<Diana[]>([]);
   const [loadingDianas, setLoadingDianas] = useState(true);
   const [dianaCount, setDianaCount]       = useState<number | string>("");
@@ -974,7 +975,21 @@ export function GestionTab({ tournament, matches, onMatchesChange, onAnnouncerSp
   const [refAdding, setRefAdding] = useState(false);
 
   // ── Master speaker (PA) ────────────────────────────────────────────────────
-  const [isMasterSpeaker, setIsMasterSpeaker] = useState(false);
+  // Persist across page reloads via localStorage
+  const masterSpeakerKey = `masterSpeaker:${tournament.id}`;
+  const [isMasterSpeaker, setIsMasterSpeaker] = useState<boolean>(() => {
+    if (typeof window === "undefined") return false;
+    return localStorage.getItem(`masterSpeaker:${tournament.id}`) === "true";
+  });
+
+  const toggleMasterSpeaker = () => {
+    setIsMasterSpeaker(prev => {
+      const next = !prev;
+      if (next) localStorage.setItem(masterSpeakerKey, "true");
+      else       localStorage.removeItem(masterSpeakerKey);
+      return next;
+    });
+  };
 
   const loadDianas = useCallback(async () => {
     try {
@@ -1006,7 +1021,7 @@ export function GestionTab({ tournament, matches, onMatchesChange, onAnnouncerSp
     return () => clearTimeout(t);
   }, [refereeSearch]);
 
-  // Master speaker: register/unregister with socket when toggled, listen for announcer:speak
+  // Master speaker: register/unregister with socket when toggled
   useEffect(() => {
     if (!emitSocket) return;
     if (isMasterSpeaker) {
@@ -1015,6 +1030,15 @@ export function GestionTab({ tournament, matches, onMatchesChange, onAnnouncerSp
       emitSocket("announcer:unregister", tournament.id);
     }
   }, [isMasterSpeaker, emitSocket, tournament.id]);
+
+  // Re-register when socket reconnects (page reload, tab switch, network blip)
+  const prevConnected = useRef(false);
+  useEffect(() => {
+    if (socketConnected && !prevConnected.current && isMasterSpeaker && emitSocket) {
+      emitSocket("announcer:register", tournament.id);
+    }
+    prevConnected.current = !!socketConnected;
+  }, [socketConnected, isMasterSpeaker, emitSocket, tournament.id]);
 
   // Listen for announcer:speak events and play TTS if this device is the master speaker
   useEffect(() => {
@@ -1368,7 +1392,7 @@ export function GestionTab({ tournament, matches, onMatchesChange, onAnnouncerSp
             </p>
           </div>
           <button
-            onClick={() => setIsMasterSpeaker(v => !v)}
+            onClick={toggleMasterSpeaker}
             className={clsx(
               "shrink-0 flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold transition-all whitespace-nowrap",
               isMasterSpeaker

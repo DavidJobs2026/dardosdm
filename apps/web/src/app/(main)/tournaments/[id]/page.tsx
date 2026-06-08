@@ -2569,6 +2569,7 @@ export default function TournamentDetailPage({ params }: { params: Promise<{ id:
           onMatchesChange={loadData}
           onAnnouncerSpeak={onAnnouncerSpeak}
           emitSocket={emitSocket}
+          socketConnected={connected}
         />
       )}
 
