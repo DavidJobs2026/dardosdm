@@ -3,9 +3,9 @@
 import { useEffect, useState, useCallback } from "react";
 import { api } from "@/lib/api";
 import { Target, RefreshCw, Trophy, Clock } from "lucide-react";
-import toast from "react-hot-toast";
 import { clsx } from "clsx";
 import type { Diana, Match, Tournament } from "@tournament/types";
+import { useSocket } from "@/hooks/useSocket";
 
 interface RefereeAssignment {
   id: string;
@@ -24,6 +24,7 @@ export function RefereeView({ tournament, refereeData, onReport }: Props) {
   const [dianas, setDianas] = useState<Diana[]>([]);
   const [matches, setMatches] = useState<Match[]>([]);
   const [loading, setLoading] = useState(true);
+  const { onMatchUpdated } = useSocket(tournament.id);
 
   const isInRange = useCallback((num: number) => {
     const { dianaStart, dianaEnd } = refereeData;
@@ -51,16 +52,24 @@ export function RefereeView({ tournament, refereeData, onReport }: Props) {
 
   useEffect(() => { loadData(); }, [loadData]);
 
-  // Auto-refresh every 15s
+  // Auto-refresh every 15s + live socket updates
   useEffect(() => {
     const id = setInterval(loadData, 15000);
     return () => clearInterval(id);
   }, [loadData]);
+  useEffect(() => {
+    const unsub = onMatchUpdated(() => loadData());
+    return unsub;
+  }, [onMatchUpdated, loadData]);
 
-  // Matches active on referee's dianas
+  // Matches active on referee's dianas: launched + not yet completed
   const activeDianaNumbers = new Set(dianas.map(d => d.number));
   const activeMatches = matches.filter(m =>
-    m.launch1At && !m.score1 && m.diana && activeDianaNumbers.has(m.diana.number)
+    m.launch1At &&
+    m.status !== "completed" &&
+    m.status !== "bye" &&
+    m.diana &&
+    activeDianaNumbers.has(m.diana.number)
   );
 
   const rangeLabel = refereeData.dianaStart != null
