@@ -18,7 +18,7 @@ import {
   Trophy, Users, Calendar, Play, CheckCircle, BarChart2,
   UserPlus, Shuffle, ArrowLeft, Network, Trash2, Settings2,
   Banknote, CreditCard, Clock, ChevronDown, ChevronUp, ChevronLeft, ChevronRight,
-  RotateCcw, RefreshCw, X, Target, Pencil, Loader2,
+  RotateCcw, RefreshCw, X, Target, Pencil, Loader2, User,
 } from "lucide-react";
 import {
   SizeSelector, BestOfSelector, LevelBuilder, LevelData, SeasonSelector,
@@ -1387,6 +1387,8 @@ export default function TournamentDetailPage({ params }: { params: Promise<{ id:
   const [reportMatch, setReportMatch] = useState<Match | null>(null);
   const [launchMatch, setLaunchMatch] = useState<Match | null>(null);
   const [loading, setLoading] = useState(true);
+  // Referee dual-view: "referee" shows the referee panel, "player" shows the normal tournament view
+  const [refereeTab, setRefereeTab] = useState<"referee" | "player">("referee");
 
   const { connected, onMatchUpdated, onTournamentUpdated, onAnnouncerSpeak, emit: emitSocket } = useSocket(id);
   const router = useRouter();
@@ -1738,10 +1740,39 @@ export default function TournamentDetailPage({ params }: { params: Promise<{ id:
   }
   if (!tournament) return <div className="text-center text-gray-400 py-20">Torneo no encontrado</div>;
 
-  // Referee view — shown instead of the full tournament page when the user is a referee (not organizer)
-  if (isReferee) {
+  // ── Referee tab bar (sticky, shown at the very top when user is a referee) ──
+  const RefereeTabs = isReferee ? (
+    <div className="sticky top-0 z-50 flex border-b border-ink-800 bg-[#0a0a0a]">
+      <button
+        onClick={() => setRefereeTab("referee")}
+        className={clsx(
+          "flex-1 flex items-center justify-center gap-2 py-3 text-sm font-bold transition-colors",
+          refereeTab === "referee"
+            ? "text-violet-400 border-b-2 border-violet-500"
+            : "text-ink-500 hover:text-ink-300"
+        )}
+      >
+        <Target className="w-4 h-4" /> Árbitro
+      </button>
+      <button
+        onClick={() => setRefereeTab("player")}
+        className={clsx(
+          "flex-1 flex items-center justify-center gap-2 py-3 text-sm font-bold transition-colors",
+          refereeTab === "player"
+            ? "text-white border-b-2 border-white/40"
+            : "text-ink-500 hover:text-ink-300"
+        )}
+      >
+        <User className="w-4 h-4" /> Jugador
+      </button>
+    </div>
+  ) : null;
+
+  // Referee panel view — shown when referee is on the "Árbitro" tab
+  if (isReferee && refereeTab === "referee") {
     return (
       <>
+        {RefereeTabs}
         <RefereeView
           tournament={tournament}
           refereeData={myRefereeData}
@@ -1772,6 +1803,9 @@ export default function TournamentDetailPage({ params }: { params: Promise<{ id:
   const canJoin = !isRegistered && tournament.status === "registration" && user && !isOrganizer;
 
   return (
+    <>
+    {/* Tab bar for referees browsing the player view */}
+    {RefereeTabs}
     <div className="space-y-6">
       {/* Back */}
       <Link href="/tournaments" className="inline-flex items-center gap-2 text-gray-400 hover:text-white transition-colors text-sm">
@@ -2783,5 +2817,6 @@ export default function TournamentDetailPage({ params }: { params: Promise<{ id:
         </div>
       )}
     </div>
+    </>
   );
 }
