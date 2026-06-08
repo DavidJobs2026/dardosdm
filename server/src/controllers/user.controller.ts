@@ -573,6 +573,13 @@ export const deleteUser = async (req: AuthRequest, res: Response, next: NextFunc
       if (target.role !== "player") return next(forbidden("Los organizadores solo pueden eliminar jugadores"));
     }
 
+    // Reject any pending inscriptions before deleting — avoids orphaned "pending_web"
+    // rows that the ON DELETE SET NULL FK would leave with userId=null but still visible
+    await prisma.participant.updateMany({
+      where: { userId: req.params.id, inscriptionStatus: { in: ["pending", "pending_web"] } },
+      data:  { inscriptionStatus: "rejected" },
+    });
+
     await prisma.user.delete({ where: { id: req.params.id } });
     return res.json({ message: "Usuario eliminado" });
   } catch (err) { next(err); }

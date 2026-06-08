@@ -2329,50 +2329,64 @@ export default function TournamentDetailPage({ params }: { params: Promise<{ id:
                 </div>
               ) : (
                 <div className="space-y-3">
-                  {pendingInscriptions.map((insc: any) => (
+                  {pendingInscriptions.map((insc: any) => {
+                    const isOrphaned = !insc.user;
+                    return (
                     <div key={insc.id}
-                      className="flex items-center justify-between gap-4 px-4 py-3 bg-ink-800/50 rounded-xl border border-ink-700">
+                      className={`flex items-center justify-between gap-4 px-4 py-3 rounded-xl border ${isOrphaned ? "bg-red-950/20 border-red-800/40" : "bg-ink-800/50 border-ink-700"}`}>
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-2 flex-wrap">
-                          <p className="text-white font-semibold text-sm truncate">{insc.user?.name ?? "—"}</p>
+                          {isOrphaned ? (
+                            <p className="text-red-400 font-semibold text-sm truncate italic">Usuario eliminado</p>
+                          ) : (
+                            <p className="text-white font-semibold text-sm truncate">{insc.user.name}</p>
+                          )}
                           {insc.inscriptionStatus === "pending_web" && (
                             <span className="inline-flex items-center gap-1 text-[9px] font-bold px-1.5 py-0.5 rounded bg-blue-900/30 border border-blue-600/40 text-blue-300 shrink-0">
                               🌐 Web
                             </span>
                           )}
                         </div>
-                        <p className="text-ink-500 text-xs truncate">{insc.user?.email}</p>
-                        <div className="flex items-center gap-2 mt-1 flex-wrap">
-                          {insc.user?.dni && (
-                            <span className="text-[11px] text-ink-400 font-mono">{insc.user.dni}</span>
-                          )}
-                          {insc.user?.phone && (
-                            <a href={`tel:${insc.user.phone}`}
-                              className="inline-flex items-center gap-1 text-[11px] text-green-400 font-semibold hover:text-green-300 transition-colors">
-                              📞 {insc.user.phone}
-                            </a>
-                          )}
-                          {insc.user?.province && (
-                            <span className="text-[11px] text-ink-400">{insc.user.province}</span>
-                          )}
-                          {/* Historic metric from PlayerRecord */}
-                          {insc.historicMetric?.value != null ? (
-                            <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-amber-300 bg-amber-900/20 border border-amber-700/30 px-1.5 py-0.5 rounded">
-                              {insc.historicMetric.metricKey?.toUpperCase()} {insc.historicMetric.value.toFixed(2)}
-                              {insc.historicMetric.level && <span className="text-amber-400 font-normal">· {insc.historicMetric.level}</span>}
-                            </span>
-                          ) : (
-                            <span className="text-[11px] text-ink-500 italic">Sin media en historial</span>
-                          )}
-                        </div>
+                        {isOrphaned ? (
+                          <p className="text-red-600 text-xs italic">La cuenta fue eliminada — solo se puede rechazar</p>
+                        ) : (
+                          <>
+                            <p className="text-ink-500 text-xs truncate">{insc.user.email}</p>
+                            <div className="flex items-center gap-2 mt-1 flex-wrap">
+                              {insc.user.dni && (
+                                <span className="text-[11px] text-ink-400 font-mono">{insc.user.dni}</span>
+                              )}
+                              {insc.user.phone && (
+                                <a href={`tel:${insc.user.phone}`}
+                                  className="inline-flex items-center gap-1 text-[11px] text-green-400 font-semibold hover:text-green-300 transition-colors">
+                                  📞 {insc.user.phone}
+                                </a>
+                              )}
+                              {insc.user.province && (
+                                <span className="text-[11px] text-ink-400">{insc.user.province}</span>
+                              )}
+                              {/* Historic metric from PlayerRecord */}
+                              {insc.historicMetric?.value != null ? (
+                                <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-amber-300 bg-amber-900/20 border border-amber-700/30 px-1.5 py-0.5 rounded">
+                                  {insc.historicMetric.metricKey?.toUpperCase()} {insc.historicMetric.value.toFixed(2)}
+                                  {insc.historicMetric.level && <span className="text-amber-400 font-normal">· {insc.historicMetric.level}</span>}
+                                </span>
+                              ) : (
+                                <span className="text-[11px] text-ink-500 italic">Sin media en historial</span>
+                              )}
+                            </div>
+                          </>
+                        )}
                       </div>
                       <div className="flex gap-2 shrink-0">
-                        <button
-                          onClick={() => openApproveModal(insc)}
-                          className="px-3 py-1.5 rounded-lg text-xs font-bold bg-green-700 hover:bg-green-600 text-white transition-colors"
-                        >
-                          Aprobar
-                        </button>
+                        {!isOrphaned && (
+                          <button
+                            onClick={() => openApproveModal(insc)}
+                            className="px-3 py-1.5 rounded-lg text-xs font-bold bg-green-700 hover:bg-green-600 text-white transition-colors"
+                          >
+                            Aprobar
+                          </button>
+                        )}
                         <button
                           onClick={() => handleResolveInscription(insc.id, "reject")}
                           className="px-3 py-1.5 rounded-lg text-xs font-bold bg-red-800 hover:bg-red-700 text-white transition-colors"
@@ -2381,7 +2395,8 @@ export default function TournamentDetailPage({ params }: { params: Promise<{ id:
                         </button>
                       </div>
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </div>
