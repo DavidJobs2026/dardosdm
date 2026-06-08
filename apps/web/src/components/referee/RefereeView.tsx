@@ -63,14 +63,17 @@ export function RefereeView({ tournament, refereeData, onReport }: Props) {
   }, [onMatchUpdated, loadData]);
 
   // Matches active on referee's dianas: launched + not yet completed
-  const activeDianaNumbers = new Set(dianas.map(d => d.number));
+  const myDianaNumbers = new Set(dianas.map(d => d.number));
   const activeMatches = matches.filter(m =>
     m.launch1At &&
     m.status !== "completed" &&
     m.status !== "bye" &&
     m.diana &&
-    activeDianaNumbers.has(m.diana.number)
+    myDianaNumbers.has(m.diana.number)
   );
+  // A diana is "in use" only when there's actually a live match at it —
+  // d.matchId alone is not enough (it gets set on assignment, before launch)
+  const activeDianaNumbers = new Set(activeMatches.map(m => m.diana!.number));
 
   const rangeLabel = refereeData.dianaStart != null
     ? refereeData.dianaEnd != null
@@ -144,7 +147,7 @@ export function RefereeView({ tournament, refereeData, onReport }: Props) {
           ) : (
             <div className="flex flex-wrap gap-2">
               {dianas.map(d => {
-                const occupied = !!d.matchId;
+                const occupied = activeDianaNumbers.has(d.number);
                 const broken = !!d.broken;
                 return (
                   <div key={d.id} className={clsx(
