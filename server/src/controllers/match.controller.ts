@@ -230,6 +230,12 @@ export const reportResult = (io: SocketServer) => async (req: AuthRequest, res: 
       }
     }
 
+    // Capture diana BEFORE freeing it (needed for the audit record below)
+    const matchDiana = await prisma.diana.findFirst({
+      where: { matchId: match.id },
+      select: { number: true },
+    });
+
     // Free diana when match completes
     await prisma.diana.updateMany({ where: { matchId: match.id }, data: { matchId: null } });
 
@@ -246,7 +252,45 @@ export const reportResult = (io: SocketServer) => async (req: AuthRequest, res: 
       winnerId,
     ).catch(() => {});
 
-    audit({ req, action: "match.report", entityType: "match", entityId: match.id, details: { tournamentId: match.tournamentId, score1, score2, winnerId } });
+    // Enriched audit — fetch participant names async (fire-and-forget, never blocks response)
+    const tournamentRole =
+      tournament.createdById === req.user!.userId ||
+      req.user!.role === "admin" ||
+      req.user!.role === "organizer"
+        ? "organizer"
+        : "referee";
+
+    ;(async () => {
+      const ids = [match.participant1Id, match.participant2Id].filter(Boolean) as string[];
+      const parts = await prisma.participant.findMany({
+        where: { id: { in: ids } },
+        select: { id: true, user: { select: { name: true } }, team: { select: { name: true } } },
+      });
+      const p1 = parts.find(p => p.id === match.participant1Id);
+      const p2 = parts.find(p => p.id === match.participant2Id);
+      const p1Name = p1?.user?.name ?? p1?.team?.name ?? null;
+      const p2Name = p2?.user?.name ?? p2?.team?.name ?? null;
+      audit({
+        req,
+        action:     "match.report",
+        entityType: "match",
+        entityId:   match.id,
+        entityName: p1Name && p2Name ? `${p1Name} vs ${p2Name}` : match.id,
+        details: {
+          tournamentId:   match.tournamentId,
+          bracketLevel:   match.bracketLevel ?? null,
+          score1,
+          score2,
+          winnerId,
+          reporterName:   req.user!.name ?? null,
+          reporterRole:   tournamentRole,
+          p1Name,
+          p2Name,
+          diana:          matchDiana?.number ?? null,
+        },
+      });
+    })().catch(() => {});
+
     return res.json({ data: updatedMatch, message: "Result reported" });
   } catch (err) {
     next(err);

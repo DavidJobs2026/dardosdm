@@ -5,7 +5,7 @@ import { UserRole } from "@tournament/types";
 import { prisma } from "../lib/prisma";
 
 export interface AuthRequest extends Request {
-  user?: { userId: string; role: string };
+  user?: { userId: string; role: string; name?: string };
 }
 
 export const authenticate = async (
@@ -23,11 +23,11 @@ export const authenticate = async (
     // Always fetch the current role from the DB so role changes take effect immediately
     const dbUser = await prisma.user.findUnique({
       where: { id: payload.userId },
-      select: { role: true },
+      select: { role: true, name: true },
     });
     if (!dbUser) return next(unauthorized("Usuario no encontrado"));
 
-    req.user = { userId: payload.userId, role: dbUser.role };
+    req.user = { userId: payload.userId, role: dbUser.role, name: dbUser.name ?? undefined };
     next();
   } catch {
     next(unauthorized("Invalid or expired token"));
@@ -52,9 +52,9 @@ export const optionalAuthenticate = async (
     const payload = verifyAccessToken(token);
     const dbUser = await prisma.user.findUnique({
       where: { id: payload.userId },
-      select: { role: true },
+      select: { role: true, name: true },
     });
-    if (dbUser) req.user = { userId: payload.userId, role: dbUser.role };
+    if (dbUser) req.user = { userId: payload.userId, role: dbUser.role, name: dbUser.name ?? undefined };
   } catch { /* invalid/expired token — treat as anonymous */ }
   next();
 };

@@ -7,6 +7,7 @@ import { Server as SocketServer } from "socket.io";
 import { handleBracketAdvancement } from "./match.controller";
 import { sendPushToUser } from "../lib/push";
 import { emitMatchUpdated, emitAnnouncement } from "../lib/socketServer";
+import { audit } from "../lib/audit";
 
 // Helper: fetch a match with the full include shape the client expects, then broadcast it
 async function broadcastMatch(matchId: string) {
@@ -433,6 +434,30 @@ export const recallMatch = async (req: AuthRequest, res: Response, next: NextFun
     const p1 = match.participant1?.user?.name ?? match.participant1?.team?.name ?? "Jugador 1";
     const p2 = match.participant2?.user?.name ?? match.participant2?.team?.name ?? "Jugador 2";
     emitAnnouncement(match.tournamentId, { p1, p2, diana: match.diana.number, callNumber });
+
+    // Audit the call
+    const recallRole =
+      tournament.createdById === req.user!.userId ||
+      req.user!.role === "admin" ||
+      req.user!.role === "organizer"
+        ? "organizer"
+        : "referee";
+    audit({
+      req,
+      action:     "match.recall",
+      entityType: "match",
+      entityId:   match.id,
+      entityName: `${p1} vs ${p2}`,
+      details: {
+        tournamentId: match.tournamentId,
+        callNumber,
+        diana:        match.diana.number,
+        reporterName: req.user!.name ?? null,
+        reporterRole: recallRole,
+        p1Name:       p1,
+        p2Name:       p2,
+      },
+    });
 
     return res.json({ data: { callNumber }, message: `Llamada ${callNumber} enviada al altavoz` });
   } catch (err) { next(err); }

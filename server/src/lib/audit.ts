@@ -17,6 +17,7 @@ export type AuditAction =
   | "participant.no_show"
   | "match.report"
   | "match.reset"
+  | "match.recall"
   | "user.register"        // new player account created via public registration
   | "user.login"
   | "user.profile_update"  // organizer/admin edited a user's profile

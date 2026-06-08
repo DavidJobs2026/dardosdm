@@ -2,10 +2,11 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { api } from "@/lib/api";
-import { Target, RefreshCw, Trophy, Clock, Volume2 } from "lucide-react";
+import { Target, RefreshCw, Trophy, Clock, Volume2, Pencil } from "lucide-react";
 import { clsx } from "clsx";
 import type { Diana, Match, Tournament } from "@tournament/types";
 import { useSocket } from "@/hooks/useSocket";
+import { ReportResultModal } from "@/components/bracket/ReportResultModal";
 
 // ── Constants ──────────────────────────────────────────────────────────────────
 const COOLDOWN_MS = 5 * 60 * 1000; // must match server LAUNCH_COOLDOWN_MS
@@ -178,6 +179,8 @@ export function RefereeView({ tournament, refereeData, onReport }: Props) {
   // recalling[matchId] = callNumber being sent (for button loading state)
   const [recalling, setRecalling] = useState<Record<string, number>>({});
   const [recallFeedback, setRecallFeedback] = useState<Record<string, string>>({});
+  // match being edited from the history section
+  const [editMatch, setEditMatch] = useState<Match | null>(null);
   const { onMatchUpdated } = useSocket(tournament.id);
 
   const isInRange = useCallback((num: number) => {
@@ -335,7 +338,78 @@ export function RefereeView({ tournament, refereeData, onReport }: Props) {
             <p className="text-ink-700 text-xs mt-1">Se actualiza automáticamente cada 15 segundos</p>
           </div>
         )}
+
+        {/* ── Historial de resultados ── */}
+        {(() => {
+          const doneMatches = matches.filter(m =>
+            m.status === "completed" &&
+            m.diana &&
+            myDianaNumbers.has(m.diana.number)
+          ).sort((a, b) =>
+            new Date(b.playedAt ?? 0).getTime() -
+            new Date(a.playedAt ?? 0).getTime()
+          );
+          if (doneMatches.length === 0) return null;
+          return (
+            <div>
+              <h2 className="text-xs font-black uppercase tracking-widest text-ink-500 mb-2">
+                Resultados reportados
+              </h2>
+              <div className="space-y-1.5">
+                {doneMatches.map(m => {
+                  const p1 = m.participant1?.user?.name ?? m.participant1?.team?.name ?? "?";
+                  const p2 = m.participant2?.user?.name ?? m.participant2?.team?.name ?? "?";
+                  const winnerParticipant = m.winnerId
+                    ? (m.participant1?.id === m.winnerId ? m.participant1 : m.participant2)
+                    : null;
+                  const winnerName2 = winnerParticipant?.user?.name ?? winnerParticipant?.team?.name ?? null;
+                  const scoreLabel = m.score1 != null && m.score2 != null
+                    ? `${m.score1} – ${m.score2}`
+                    : winnerName2
+                      ? `Ganador: ${winnerName2}`
+                      : "–";
+                  const playedAt = m.playedAt;
+                  return (
+                    <div key={m.id} className="bg-ink-900 border border-ink-800 rounded-xl px-3 py-2.5 flex items-center gap-3">
+                      <div className="w-7 h-7 rounded-lg bg-ink-800 border border-ink-700 flex items-center justify-center text-ink-400 font-bold text-xs shrink-0">
+                        {m.diana?.number}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-semibold text-white truncate">
+                          {p1} <span className="text-ink-600">vs</span> {p2}
+                        </p>
+                        <p className="text-[11px] text-ink-500">
+                          {scoreLabel}
+                          {playedAt && (
+                            <span className="ml-2 text-ink-600">{fmtTime(playedAt)}</span>
+                          )}
+                        </p>
+                      </div>
+                      <button
+                        onClick={() => setEditMatch(m)}
+                        className="p-1.5 rounded-lg text-ink-500 hover:text-white hover:bg-ink-700 transition-colors shrink-0"
+                        title="Corregir resultado"
+                      >
+                        <Pencil className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })()}
       </div>
+
+      {/* Edit result modal */}
+      {editMatch && (
+        <ReportResultModal
+          match={editMatch}
+          tournament={tournament}
+          onClose={() => setEditMatch(null)}
+          onSuccess={() => { setEditMatch(null); loadData(); }}
+        />
+      )}
     </div>
   );
 }
