@@ -651,10 +651,16 @@ export function RRView({ tournament, matches, isOrganizer, hasKO = false, bracke
   const [groupDianasMap, setGroupDianasMap] = useState<Record<string, number[]>>(
     () => readGroupDianas(tournament.id, bracketLevel)
   );
+  // Diana numbers reserved in OTHER levels — recomputed whenever bracketLevel or the
+  // current level's assignments change (groupDianasMap dep ensures we re-read after writes).
+  const [otherLevelNums, setOtherLevelNums] = useState<Set<number>>(
+    () => readOtherLevelsDianas(tournament.id, bracketLevel)
+  );
 
   // Re-load diana assignments when the bracket level changes (user switches level tab)
   useEffect(() => {
     setGroupDianasMap(readGroupDianas(tournament.id, bracketLevel));
+    setOtherLevelNums(readOtherLevelsDianas(tournament.id, bracketLevel));
   }, [tournament.id, bracketLevel]);
 
   const loadDianas = useCallback(async () => {
@@ -670,6 +676,8 @@ export function RRView({ tournament, matches, isOrganizer, hasKO = false, bracke
     setGroupDianasMap(prev => {
       const next = { ...prev, [groupName]: [...(prev[groupName] ?? []), num] };
       writeGroupDianas(tournament.id, bracketLevel, next);
+      // Re-read other levels in case a same-number diana was just freed elsewhere
+      setOtherLevelNums(readOtherLevelsDianas(tournament.id, bracketLevel));
       return next;
     });
   };
@@ -678,6 +686,7 @@ export function RRView({ tournament, matches, isOrganizer, hasKO = false, bracke
     setGroupDianasMap(prev => {
       const next = { ...prev, [groupName]: (prev[groupName] ?? []).filter(n => n !== num) };
       writeGroupDianas(tournament.id, bracketLevel, next);
+      setOtherLevelNums(readOtherLevelsDianas(tournament.id, bracketLevel));
       return next;
     });
   };
@@ -782,7 +791,7 @@ export function RRView({ tournament, matches, isOrganizer, hasKO = false, bracke
               isOrganizer={isOrganizer}
               dianas={dianas}
               groupDianasMap={groupDianasMap}
-              otherLevelNums={readOtherLevelsDianas(tournament.id, bracketLevel)}
+              otherLevelNums={otherLevelNums}
               onAssignDiana={handleAssignDiana}
               onUnassignDiana={handleUnassignDiana}
               onDataChange={() => { loadStandings(); loadDianas(); onDataChange(); }}
