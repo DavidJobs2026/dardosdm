@@ -218,7 +218,7 @@ function MatchCard({
 
 function GroupCard({
   group, tournamentId, bracketLevel, advancingCount, isOrganizer,
-  dianas, groupDianasMap, onAssignDiana, onUnassignDiana,
+  dianas, groupDianasMap, otherLevelNums, onAssignDiana, onUnassignDiana,
   onDataChange, onMatchAction,
 }: {
   group:          RRGroup & { matches: Match[] };
@@ -228,8 +228,10 @@ function GroupCard({
   isOrganizer:    boolean;
   /** All tournament dianas */
   dianas:         Diana[];
-  /** Map of all group-diana assignments */
+  /** Map of all group-diana assignments for this level */
   groupDianasMap: Record<string, number[]>;
+  /** Diana numbers reserved in OTHER bracket levels (cross-level exclusion) */
+  otherLevelNums: Set<number>;
   onAssignDiana:   (groupName: string, num: number) => void;
   onUnassignDiana: (groupName: string, num: number) => void;
   onDataChange:   () => void;
@@ -256,15 +258,15 @@ function GroupCard({
   const assignedDianas = groupDianasMap[group.name] ?? [];
   // How many dianas this group can have: floor(players / 2) simultaneous matches
   const maxGroupDianas = Math.floor(participants.length / 2);
-  // Numbers already taken by other groups
+  // Numbers already taken by other groups in this same level
   const otherGroupNums = new Set<number>(
     Object.entries(groupDianasMap)
       .filter(([name]) => name !== group.name)
       .flatMap(([, nums]) => nums)
   );
-  // Free dianas: not in use, not broken, not reserved by another group
+  // Free dianas: not in use, not broken, not reserved by any other group (any level)
   const freeDianas = dianas.filter(
-    d => !d.matchId && !d.broken && !otherGroupNums.has(d.number)
+    d => !d.matchId && !d.broken && !otherGroupNums.has(d.number) && !otherLevelNums.has(d.number)
   );
   // Free dianas available to add (not already in this group)
   const addableDianas = freeDianas.filter(d => !assignedDianas.includes(d.number));
@@ -617,6 +619,24 @@ function writeGroupDianas(tournamentId: string, bracketLevel: string | null | un
   try { localStorage.setItem(lsKey(tournamentId, bracketLevel), JSON.stringify(map)); } catch { /* noop */ }
 }
 
+/** Returns a Set of all diana numbers reserved by ANY group in OTHER levels of this tournament */
+function readOtherLevelsDianas(tournamentId: string, currentLevel?: string | null): Set<number> {
+  const result = new Set<number>();
+  try {
+    if (typeof window === "undefined") return result;
+    const prefix     = `rrGroupDianas:${tournamentId}:`;
+    const currentKey = lsKey(tournamentId, currentLevel);
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && key.startsWith(prefix) && key !== currentKey) {
+        const map = JSON.parse(localStorage.getItem(key) ?? "{}") as Record<string, number[]>;
+        Object.values(map).flat().forEach(n => result.add(n));
+      }
+    }
+  } catch { /* noop */ }
+  return result;
+}
+
 export function RRView({ tournament, matches, isOrganizer, hasKO = false, bracketLevel, onReport, onDataChange }: Props) {
   const [groups,           setGroups]           = useState<(RRGroup & { matches: Match[] })[]>([]);
   const [loading,          setLoading]          = useState(true);
@@ -762,6 +782,7 @@ export function RRView({ tournament, matches, isOrganizer, hasKO = false, bracke
               isOrganizer={isOrganizer}
               dianas={dianas}
               groupDianasMap={groupDianasMap}
+              otherLevelNums={readOtherLevelsDianas(tournament.id, bracketLevel)}
               onAssignDiana={handleAssignDiana}
               onUnassignDiana={handleUnassignDiana}
               onDataChange={() => { loadStandings(); loadDianas(); onDataChange(); }}

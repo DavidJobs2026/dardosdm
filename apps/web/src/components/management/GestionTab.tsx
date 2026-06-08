@@ -504,9 +504,11 @@ interface DianaGridProps {
   selectedIds?:      Set<string>;
   /** Diana numbers assigned to any RR group (reserved but not yet in use) */
   groupAssignedNums?: Set<number>;
+  /** Map of diana number → "Grupo X · Nivel Y" label */
+  groupAssignedInfo?: Map<number, string>;
 }
 
-function DianaGrid({ dianas, onClickDiana, selectMode, selectedIds, groupAssignedNums }: DianaGridProps) {
+function DianaGrid({ dianas, onClickDiana, selectMode, selectedIds, groupAssignedNums, groupAssignedInfo }: DianaGridProps) {
   // Check if any dianas have positions
   const hasPositions = dianas.some(d => d.posX != null);
 
@@ -546,7 +548,7 @@ function DianaGrid({ dianas, onClickDiana, selectMode, selectedIds, groupAssigne
               title={
                 occupied  ? `Diana ${d.number} — En uso` :
                 broken    ? `Diana ${d.number} — Averiada` :
-                groupRes  ? `Diana ${d.number} — Asignada a grupo` :
+                groupRes  ? `Diana ${d.number} — Reservada · ${groupAssignedInfo?.get(d.number) ?? "grupo RR"}` :
                             `Diana ${d.number} — Libre`
               }
             >
@@ -607,7 +609,7 @@ function DianaGrid({ dianas, onClickDiana, selectMode, selectedIds, groupAssigne
                       title={
                         occupied  ? `Diana ${d.number} — En uso` :
                         broken    ? `Diana ${d.number} — Averiada` :
-                        groupRes  ? `Diana ${d.number} — Asignada a grupo` :
+                        groupRes  ? `Diana ${d.number} — Reservada · ${groupAssignedInfo?.get(d.number) ?? "grupo RR"}` :
                                     `Diana ${d.number} — Libre`
                       }
                       className={clsx(
@@ -706,13 +708,15 @@ function DianaGrid({ dianas, onClickDiana, selectMode, selectedIds, groupAssigne
 // ─── Free / broken diana panel ───────────────────────────────────────────────
 
 interface FreeDianaPanelProps {
-  diana:       Diana;
-  tournament:  Tournament;
+  diana:        Diana;
+  tournament:   Tournament;
   onDataChange: () => void;
-  onClose:     () => void;
+  onClose:      () => void;
+  /** "Grupo A · Nivel 1" label if diana is RR-reserved */
+  rrGroupLabel?: string;
 }
 
-function FreeDianaPanel({ diana, tournament, onDataChange, onClose }: FreeDianaPanelProps) {
+function FreeDianaPanel({ diana, tournament, onDataChange, onClose, rrGroupLabel }: FreeDianaPanelProps) {
   const [busy,    setBusy]    = useState(false);
   const [confirm, setConfirm] = useState(false);
 
@@ -743,14 +747,18 @@ function FreeDianaPanel({ diana, tournament, onDataChange, onClose }: FreeDianaP
       "rounded-2xl p-4 space-y-3 border",
       diana.broken
         ? "bg-amber-950/20 border-amber-700/40"
+        : rrGroupLabel
+        ? "bg-orange-950/20 border-orange-800/40"
         : "bg-ink-900 border-ink-800"
     )}>
       <div className="flex items-center justify-between">
         <h3 className="font-bold text-white flex items-center gap-2 text-sm">
-          <Target className={clsx("w-4 h-4", diana.broken ? "text-amber-400" : "text-green-400")} />
+          <Target className={clsx("w-4 h-4", diana.broken ? "text-amber-400" : rrGroupLabel ? "text-orange-400" : "text-green-400")} />
           Diana {diana.number}
           {diana.broken
             ? <span className="text-[11px] text-amber-400 font-normal">— Averiada</span>
+            : rrGroupLabel
+            ? <span className="text-[11px] text-orange-400 font-normal">— Reservada · {rrGroupLabel}</span>
             : <span className="text-[11px] text-green-400 font-normal">— Libre</span>}
         </h3>
         <button onClick={onClose} className="text-ink-600 hover:text-white transition-colors">
@@ -897,6 +905,30 @@ function getAllGroupAssignedDianas(tournamentId: string): Set<number> {
       if (key && key.startsWith(prefix)) {
         const map = JSON.parse(localStorage.getItem(key) ?? "{}") as Record<string, number[]>;
         Object.values(map).flat().forEach(n => result.add(n));
+      }
+    }
+  } catch { /* noop */ }
+  return result;
+}
+
+/** Returns a map: diana number → "Grupo X · Nivel Y" label for all RR-reserved dianas */
+function getGroupAssignedDianaInfo(tournamentId: string): Map<number, string> {
+  const result = new Map<number, string>();
+  try {
+    if (typeof window === "undefined") return result;
+    const prefix = `rrGroupDianas:${tournamentId}:`;
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && key.startsWith(prefix)) {
+        // key format: rrGroupDianas:{tournamentId}:{level}
+        const level = key.slice(prefix.length);
+        const levelLabel = level === "default" ? "" : ` · ${level}`;
+        const map = JSON.parse(localStorage.getItem(key) ?? "{}") as Record<string, number[]>;
+        for (const [groupName, nums] of Object.entries(map)) {
+          for (const n of nums) {
+            result.set(n, `Grupo ${groupName}${levelLabel}`);
+          }
+        }
       }
     }
   } catch { /* noop */ }
@@ -1284,6 +1316,7 @@ export function GestionTab({ tournament, matches, onMatchesChange }: GestionTabP
               selectMode={selectMode}
               selectedIds={selectedIds}
               groupAssignedNums={getAllGroupAssignedDianas(tournament.id)}
+              groupAssignedInfo={getGroupAssignedDianaInfo(tournament.id)}
             />
           )}
 
@@ -1304,6 +1337,7 @@ export function GestionTab({ tournament, matches, onMatchesChange }: GestionTabP
                 tournament={tournament}
                 onDataChange={() => { handleDataChange(); setSelectedDiana(null); }}
                 onClose={() => setSelectedDiana(null)}
+                rrGroupLabel={getGroupAssignedDianaInfo(tournament.id).get(selectedDiana.number)}
               />
             )
           )}
