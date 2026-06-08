@@ -116,8 +116,31 @@ export const reportResult = (io: SocketServer) => async (req: AuthRequest, res: 
 
     const tournament = match.tournament;
     const isOrganizer =
-      tournament.createdById === req.user!.userId || req.user!.role === "admin";
-    if (!isOrganizer) return next(forbidden("Only the organizer can report results"));
+      tournament.createdById === req.user!.userId ||
+      req.user!.role === "admin" ||
+      req.user!.role === "organizer";
+
+    if (!isOrganizer) {
+      // Also allow referees assigned to this tournament whose diana range covers this match
+      const dianaNumber = await prisma.diana.findFirst({
+        where: { matchId: match.id },
+        select: { number: true },
+      });
+      const referee = await prisma.tournamentReferee.findUnique({
+        where: { tournamentId_userId: { tournamentId: tournament.id, userId: req.user!.userId } },
+        select: { dianaStart: true, dianaEnd: true },
+      });
+      if (!referee) return next(forbidden("Solo el organizador o un árbitro asignado puede reportar resultados"));
+
+      // If referee has a restricted range, the match's diana must be within it
+      if (dianaNumber && (referee.dianaStart != null || referee.dianaEnd != null)) {
+        const num = dianaNumber.number;
+        const inRange =
+          (referee.dianaStart == null || num >= referee.dianaStart) &&
+          (referee.dianaEnd   == null || num <= referee.dianaEnd);
+        if (!inRange) return next(forbidden("Esta diana no está en tu rango asignado"));
+      }
+    }
 
     // Determine effective bestOf for this match (level override > global)
     const levelConfig = (tournament.levels as Array<{ name: string; bestOf: number | null }>)
