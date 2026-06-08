@@ -6,7 +6,7 @@ import { notFound, forbidden, badRequest } from "../utils/errors";
 import { Server as SocketServer } from "socket.io";
 import { handleBracketAdvancement } from "./match.controller";
 import { sendPushToUser } from "../lib/push";
-import { emitMatchUpdated } from "../lib/socketServer";
+import { emitMatchUpdated, emitAnnouncement } from "../lib/socketServer";
 
 // Helper: fetch a match with the full include shape the client expects, then broadcast it
 async function broadcastMatch(matchId: string) {
@@ -298,6 +298,12 @@ export const launchMatch = async (req: AuthRequest, res: Response, next: NextFun
       await prisma.match.update({ where: { id: match.id }, data: { launch1At: now } });
       sendPushNotification(match, tournament.name, 1);
       broadcastMatch(match.id).catch(() => {});
+      // Emit TTS announcement to master announcer (or room fallback)
+      if (match.diana?.number != null) {
+        const p1 = match.participant1?.user?.name ?? match.participant1?.team?.name ?? "Jugador 1";
+        const p2 = match.participant2?.user?.name ?? match.participant2?.team?.name ?? "Jugador 2";
+        emitAnnouncement(match.tournamentId, { p1, p2, diana: match.diana.number, callNumber: 1 });
+      }
       return res.json({ data: { call: 1, at: now.toISOString() }, message: "Primera llamada registrada" });
     }
 
@@ -310,6 +316,11 @@ export const launchMatch = async (req: AuthRequest, res: Response, next: NextFun
       await prisma.match.update({ where: { id: match.id }, data: { launch2At: now } });
       sendPushNotification(match, tournament.name, 2);
       broadcastMatch(match.id).catch(() => {});
+      if (match.diana?.number != null) {
+        const p1 = match.participant1?.user?.name ?? match.participant1?.team?.name ?? "Jugador 1";
+        const p2 = match.participant2?.user?.name ?? match.participant2?.team?.name ?? "Jugador 2";
+        emitAnnouncement(match.tournamentId, { p1, p2, diana: match.diana.number, callNumber: 2 });
+      }
       return res.json({ data: { call: 2, at: now.toISOString() }, message: "Segunda llamada registrada" });
     }
 
@@ -322,6 +333,11 @@ export const launchMatch = async (req: AuthRequest, res: Response, next: NextFun
       await prisma.match.update({ where: { id: match.id }, data: { launch3At: now } });
       sendPushNotification(match, tournament.name, 3);
       broadcastMatch(match.id).catch(() => {});
+      if (match.diana?.number != null) {
+        const p1 = match.participant1?.user?.name ?? match.participant1?.team?.name ?? "Jugador 1";
+        const p2 = match.participant2?.user?.name ?? match.participant2?.team?.name ?? "Jugador 2";
+        emitAnnouncement(match.tournamentId, { p1, p2, diana: match.diana.number, callNumber: 3 });
+      }
       return res.json({ data: { call: 3, at: now.toISOString() }, message: "Tercera llamada registrada" });
     }
 

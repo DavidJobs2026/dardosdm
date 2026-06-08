@@ -86,6 +86,7 @@ model User {
   refreshTokens        RefreshToken[]
   pushSubscriptions    PushSubscription[]
   auditLogs            AuditLog[]
+  refereeAssignments   TournamentReferee[]
 
   @@map("users")
 }
@@ -172,6 +173,7 @@ model Tournament {
   chatMessages ChatMessage[]
   levels       TournamentLevel[]
   dianas       Diana[]
+  referees     TournamentReferee[]
 
   @@map("tournaments")
 }
@@ -192,6 +194,22 @@ model TournamentLevel {
   tournament   Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
 
   @@map("tournament_levels")
+}
+
+// ─── Tournament Referee assignment ────────────────────────────────────────────
+model TournamentReferee {
+  id           String     @id @default(cuid())
+  tournamentId String     @map("tournament_id")
+  userId       String     @map("user_id")
+  dianaStart   Int?       @map("diana_start")   // null = all dianas
+  dianaEnd     Int?       @map("diana_end")
+  createdAt    DateTime   @default(now()) @map("created_at")
+
+  tournament   Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  user         User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([tournamentId, userId])
+  @@map("tournament_referees")
 }
 
 model Participant {

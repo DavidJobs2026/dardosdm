@@ -7,7 +7,7 @@ import { clsx } from "clsx";
 import {
   Target, Play, AlertTriangle, X, Clock, Check,
   Plus, RefreshCw, ChevronDown, Unlock, LayoutGrid,
-  Wrench, Trash2, CheckSquare,
+  Wrench, Trash2, CheckSquare, Volume2, VolumeX,
 } from "lucide-react";
 import toast from "react-hot-toast";
 import { ReportResultModal } from "@/components/bracket/ReportResultModal";
@@ -181,9 +181,10 @@ interface MatchRowProps {
   onDataChange: () => void;
   onReport: (m: Match) => void;
   overdue?: boolean;
+  skipLocalTTS?: boolean;
 }
 
-function MatchRow({ match, dianas, tournament, onDataChange, onReport, overdue }: MatchRowProps) {
+function MatchRow({ match, dianas, tournament, onDataChange, onReport, overdue, skipLocalTTS }: MatchRowProps) {
   const [launching, setLaunching]         = useState(false);
   const [noShowOpen, setNoShowOpen]       = useState(false);
   const [callPlayerOpen, setCallPlayerOpen] = useState(false);
@@ -254,7 +255,7 @@ function MatchRow({ match, dianas, tournament, onDataChange, onReport, overdue }
       const res = await api.post(`/tournaments/${tournament.id}/matches/${match.id}/launch`);
       toast.success(res.data?.message ?? "Llamada registrada");
       onDataChange();
-      if (assignedDiana) {
+      if (assignedDiana && !skipLocalTTS) {
         if (callNum === 1) {
           void announceMatch(
             playerName(match.participant1),
@@ -823,9 +824,10 @@ interface DianaDetailProps {
   onDataChange: () => void;
   onReport: (m: Match) => void;
   onClose: () => void;
+  skipLocalTTS?: boolean;
 }
 
-function DianaDetail({ diana, dianas, tournament, onDataChange, onReport, onClose }: DianaDetailProps) {
+function DianaDetail({ diana, dianas, tournament, onDataChange, onReport, onClose, skipLocalTTS }: DianaDetailProps) {
   const match = diana.match as Match | null;
   const [freeing, setFreeing] = useState(false);
 
@@ -869,6 +871,7 @@ function DianaDetail({ diana, dianas, tournament, onDataChange, onReport, onClos
           tournament={tournament}
           onDataChange={() => { onDataChange(); onClose(); }}
           onReport={onReport}
+          skipLocalTTS={skipLocalTTS}
         />
       ) : (
         <p className="text-sm text-[#666]">No hay partido activo en esta diana.</p>
@@ -941,9 +944,11 @@ interface GestionTabProps {
   tournament: Tournament;
   matches:    Match[];
   onMatchesChange: () => void;
+  onAnnouncerSpeak?: (cb: (payload: any) => void) => (() => void);
+  emitSocket?: (event: string, ...args: any[]) => void;
 }
 
-export function GestionTab({ tournament, matches, onMatchesChange }: GestionTabProps) {
+export function GestionTab({ tournament, matches, onMatchesChange, onAnnouncerSpeak, emitSocket }: GestionTabProps) {
   const [dianas, setDianas]               = useState<Diana[]>([]);
   const [loadingDianas, setLoadingDianas] = useState(true);
   const [dianaCount, setDianaCount]       = useState<number | string>("");
@@ -958,6 +963,19 @@ export function GestionTab({ tournament, matches, onMatchesChange }: GestionTabP
   const [confirmBulkDel,   setConfirmBulkDel]   = useState(false);
   const [launchingLevels,  setLaunchingLevels]  = useState<Set<string>>(new Set());
 
+  // ── Referee management ─────────────────────────────────────────────────────
+  const [referees, setReferees] = useState<any[]>([]);
+  const [refereeSearch, setRefereeSearch] = useState("");
+  const [refereeSearchResults, setRefereeSearchResults] = useState<any[]>([]);
+  const [refereeSearching, setRefereeSearching] = useState(false);
+  const [refereeDialogUser, setRefereeDialogUser] = useState<any>(null);
+  const [refDianaStart, setRefDianaStart] = useState("");
+  const [refDianaEnd, setRefDianaEnd] = useState("");
+  const [refAdding, setRefAdding] = useState(false);
+
+  // ── Master speaker (PA) ────────────────────────────────────────────────────
+  const [isMasterSpeaker, setIsMasterSpeaker] = useState(false);
+
   const loadDianas = useCallback(async () => {
     try {
       const res = await api.get(`/tournaments/${tournament.id}/dianas`);
@@ -967,6 +985,80 @@ export function GestionTab({ tournament, matches, onMatchesChange }: GestionTabP
   }, [tournament.id]);
 
   useEffect(() => { loadDianas(); }, [loadDianas]);
+
+  // Load referees on mount
+  useEffect(() => {
+    api.get(`/tournaments/${tournament.id}/referees`)
+      .then(r => setReferees(r.data.data ?? []))
+      .catch(() => {});
+  }, [tournament.id]);
+
+  // Search users for referee (debounced)
+  useEffect(() => {
+    if (refereeSearch.length < 2) { setRefereeSearchResults([]); return; }
+    const t = setTimeout(async () => {
+      setRefereeSearching(true);
+      try {
+        const r = await api.get(`/users/search?q=${encodeURIComponent(refereeSearch)}`);
+        setRefereeSearchResults(r.data.data ?? []);
+      } catch { /* silent */ } finally { setRefereeSearching(false); }
+    }, 300);
+    return () => clearTimeout(t);
+  }, [refereeSearch]);
+
+  // Master speaker: register/unregister with socket when toggled, listen for announcer:speak
+  useEffect(() => {
+    if (!emitSocket) return;
+    if (isMasterSpeaker) {
+      emitSocket("announcer:register", tournament.id);
+    } else {
+      emitSocket("announcer:unregister", tournament.id);
+    }
+  }, [isMasterSpeaker, emitSocket, tournament.id]);
+
+  // Listen for announcer:speak events and play TTS if this device is the master speaker
+  useEffect(() => {
+    if (!onAnnouncerSpeak || !isMasterSpeaker) return;
+    const unsub = onAnnouncerSpeak(async (payload: any) => {
+      const { p1, p2, p3, diana, callNumber } = payload;
+      if (callNumber === 1) {
+        await announceMatch(p1, p2, diana, p3);
+      } else {
+        await announceWarning(p1, diana, callNumber as 2 | 3);
+      }
+    });
+    return unsub;
+  }, [onAnnouncerSpeak, isMasterSpeaker]);
+
+  const handleAddReferee = async () => {
+    if (!refereeDialogUser) return;
+    setRefAdding(true);
+    try {
+      const r = await api.post(`/tournaments/${tournament.id}/referees`, {
+        userId: refereeDialogUser.id,
+        dianaStart: refDianaStart ? parseInt(refDianaStart) : null,
+        dianaEnd: refDianaEnd ? parseInt(refDianaEnd) : null,
+      });
+      setReferees(prev => [...prev.filter((x: any) => x.userId !== refereeDialogUser.id), r.data.data]);
+      setRefereeDialogUser(null);
+      setRefereeSearch("");
+      setRefDianaStart("");
+      setRefDianaEnd("");
+      toast.success("Árbitro asignado");
+    } catch (err: any) {
+      toast.error(err.response?.data?.message ?? "Error");
+    } finally { setRefAdding(false); }
+  };
+
+  const handleRemoveReferee = async (refereeId: string) => {
+    try {
+      await api.delete(`/tournaments/${tournament.id}/referees/${refereeId}`);
+      setReferees(prev => prev.filter((r: any) => r.id !== refereeId));
+      toast.success("Árbitro eliminado");
+    } catch (err: any) {
+      toast.error(err.response?.data?.message ?? "Error");
+    }
+  };
 
   const handleDataChange = () => { loadDianas(); onMatchesChange(); };
 
@@ -981,7 +1073,7 @@ export function GestionTab({ tournament, matches, onMatchesChange }: GestionTabP
       await Promise.all(ready.map(async m => {
         const assignedDiana = dianas.find(d => d.matchId === m.id);
         await api.post(`/tournaments/${tournament.id}/matches/${m.id}/launch`);
-        if (assignedDiana) {
+        if (assignedDiana && !isMasterSpeaker) {
           void announceMatch(
             playerName(m.participant1),
             playerName(m.participant2),
@@ -1157,6 +1249,137 @@ export function GestionTab({ tournament, matches, onMatchesChange }: GestionTabP
       )}
 
       <div className="space-y-6">
+        {/* ── Árbitros ─────────────────────────────────────────────────────── */}
+        <div className="bg-ink-900 border border-ink-800 rounded-2xl p-5 space-y-4">
+          <h2 className="font-bold text-white flex items-center gap-2 text-sm uppercase tracking-wider">
+            <Target className="w-4 h-4 text-violet-400" /> Árbitros
+          </h2>
+          {/* Current referees list */}
+          {referees.length > 0 && (
+            <div className="space-y-2">
+              {referees.map((ref: any) => (
+                <div key={ref.id} className="flex items-center gap-3 px-3 py-2 bg-ink-800/50 rounded-xl border border-ink-700">
+                  <div className="w-7 h-7 rounded-lg bg-violet-900/30 border border-violet-700/40 flex items-center justify-center shrink-0">
+                    <Target className="w-3.5 h-3.5 text-violet-400" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold text-white truncate">{ref.user.name}</p>
+                    <p className="text-[11px] text-ink-500">
+                      {ref.dianaStart != null
+                        ? `Dianas ${ref.dianaStart}${ref.dianaEnd != null ? `–${ref.dianaEnd}` : "+"}`
+                        : "Todas las dianas"}
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => handleRemoveReferee(ref.id)}
+                    className="p-1.5 text-ink-600 hover:text-red-400 transition-colors rounded-lg hover:bg-red-900/10"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+          {/* Add referee */}
+          {refereeDialogUser ? (
+            <div className="space-y-3 p-3 bg-ink-800/30 rounded-xl border border-ink-700">
+              <p className="text-sm font-semibold text-white">{refereeDialogUser.name}</p>
+              <div className="flex gap-2">
+                <div className="flex-1">
+                  <label className="text-[11px] text-ink-500 mb-1 block">Diana inicio</label>
+                  <input type="number" min="1" value={refDianaStart}
+                    onChange={e => setRefDianaStart(e.target.value)}
+                    placeholder="Todas"
+                    className="w-full h-8 px-2 rounded-lg bg-ink-800 border border-ink-700 text-white text-sm focus:outline-none focus:border-violet-600" />
+                </div>
+                <div className="flex-1">
+                  <label className="text-[11px] text-ink-500 mb-1 block">Diana fin</label>
+                  <input type="number" min="1" value={refDianaEnd}
+                    onChange={e => setRefDianaEnd(e.target.value)}
+                    placeholder="Todas"
+                    className="w-full h-8 px-2 rounded-lg bg-ink-800 border border-ink-700 text-white text-sm focus:outline-none focus:border-violet-600" />
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={handleAddReferee}
+                  disabled={refAdding}
+                  className="flex-1 py-1.5 rounded-lg text-xs font-bold bg-violet-700 hover:bg-violet-600 text-white transition-colors disabled:opacity-50"
+                >
+                  {refAdding ? "Guardando…" : "Asignar árbitro"}
+                </button>
+                <button
+                  onClick={() => setRefereeDialogUser(null)}
+                  className="px-3 py-1.5 rounded-lg text-xs font-semibold border border-ink-700 text-ink-400 hover:text-white transition-colors"
+                >
+                  Cancelar
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="relative">
+              <input
+                type="text"
+                value={refereeSearch}
+                onChange={e => setRefereeSearch(e.target.value)}
+                placeholder="Buscar jugador para asignar como árbitro…"
+                className="w-full h-9 px-3 rounded-xl bg-ink-800 border border-ink-700 text-white text-sm placeholder-ink-500 focus:outline-none focus:border-violet-600"
+              />
+              {(refereeSearchResults.length > 0 || refereeSearching) && (
+                <div className="absolute z-20 top-full left-0 right-0 mt-1 bg-ink-900 border border-ink-700 rounded-xl overflow-hidden shadow-xl max-h-48 overflow-y-auto">
+                  {refereeSearching ? (
+                    <div className="px-3 py-2 text-xs text-ink-500">Buscando…</div>
+                  ) : refereeSearchResults.map((u: any) => (
+                    <button
+                      key={u.id}
+                      onClick={() => { setRefereeDialogUser(u); setRefereeSearch(""); setRefereeSearchResults([]); }}
+                      className="w-full text-left px-3 py-2 hover:bg-ink-800 transition-colors"
+                    >
+                      <p className="text-sm text-white font-semibold">{u.name}</p>
+                      <p className="text-[11px] text-ink-500">{u.email}</p>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* ── Altavoces (Master Speaker) ────────────────────────────────────── */}
+        <div className={clsx(
+          "border rounded-2xl p-4 flex items-center justify-between gap-4",
+          isMasterSpeaker
+            ? "bg-green-900/15 border-green-700/50"
+            : "bg-ink-900 border-ink-800"
+        )}>
+          <div className="min-w-0">
+            <div className="flex items-center gap-2 mb-0.5">
+              {isMasterSpeaker
+                ? <Volume2 className="w-4 h-4 text-green-400 shrink-0" />
+                : <VolumeX className="w-4 h-4 text-ink-500 shrink-0" />}
+              <span className={clsx("text-sm font-bold", isMasterSpeaker ? "text-green-300" : "text-white")}>
+                {isMasterSpeaker ? "Altavoces activos" : "Altavoces desactivados"}
+              </span>
+            </div>
+            <p className="text-xs text-ink-500">
+              {isMasterSpeaker
+                ? "Este dispositivo es el altavoz central. Las llamadas se anunciarán aquí."
+                : "Activa para convertir este dispositivo en el altavoz central del torneo."}
+            </p>
+          </div>
+          <button
+            onClick={() => setIsMasterSpeaker(v => !v)}
+            className={clsx(
+              "shrink-0 flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold transition-all whitespace-nowrap",
+              isMasterSpeaker
+                ? "bg-ink-800 border border-ink-700 text-ink-300 hover:bg-red-900/20 hover:text-red-400 hover:border-red-800/40"
+                : "bg-green-600 hover:bg-green-500 text-white shadow-lg"
+            )}
+          >
+            {isMasterSpeaker ? "Desactivar" : "Activar altavoces"}
+          </button>
+        </div>
+
         {/* ── Diana map ────────────────────────────────────────────────────── */}
         <div className="bg-ink-900 border border-ink-800 rounded-2xl p-5 space-y-4">
           <div className="flex items-center justify-between">
@@ -1330,6 +1553,7 @@ export function GestionTab({ tournament, matches, onMatchesChange }: GestionTabP
                 onDataChange={() => { handleDataChange(); setSelectedDiana(null); }}
                 onReport={m => setReportMatch(m)}
                 onClose={() => setSelectedDiana(null)}
+                skipLocalTTS={isMasterSpeaker}
               />
             ) : (
               <FreeDianaPanel
@@ -1382,6 +1606,7 @@ export function GestionTab({ tournament, matches, onMatchesChange }: GestionTabP
                           onDataChange={handleDataChange}
                           onReport={mm => setReportMatch(mm)}
                           overdue
+                          skipLocalTTS={isMasterSpeaker}
                         />
                       ))}
                     </div>
@@ -1434,6 +1659,7 @@ export function GestionTab({ tournament, matches, onMatchesChange }: GestionTabP
                             tournament={tournament}
                             onDataChange={handleDataChange}
                             onReport={mm => setReportMatch(mm)}
+                            skipLocalTTS={isMasterSpeaker}
                           />
                         ))}
                       </div>
@@ -1465,6 +1691,7 @@ export function GestionTab({ tournament, matches, onMatchesChange }: GestionTabP
                           tournament={tournament}
                           onDataChange={handleDataChange}
                           onReport={mm => setReportMatch(mm)}
+                          skipLocalTTS={isMasterSpeaker}
                         />
                       ))}
                     </div>
@@ -1499,6 +1726,7 @@ export function GestionTab({ tournament, matches, onMatchesChange }: GestionTabP
                           tournament={tournament}
                           onDataChange={handleDataChange}
                           onReport={mm => setReportMatch(mm)}
+                          skipLocalTTS={isMasterSpeaker}
                         />
                       ))}
                     </div>

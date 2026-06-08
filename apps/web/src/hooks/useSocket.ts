@@ -42,5 +42,16 @@ export function useSocket(tournamentId: string) {
     return () => { socketRef.current?.off("tournament:updated", cb); };
   };
 
-  return { connected, onMatchUpdated, onTournamentUpdated };
+  /** Fires when the server wants this device to play a TTS announcement */
+  const onAnnouncerSpeak = (cb: (payload: any) => void) => {
+    socketRef.current?.on("announcer:speak", cb);
+    return () => { socketRef.current?.off("announcer:speak", cb); };
+  };
+
+  /** Emit an event to the socket */
+  const emit = (event: string, ...args: any[]) => {
+    socketRef.current?.emit(event, ...args);
+  };
+
+  return { connected, onMatchUpdated, onTournamentUpdated, onAnnouncerSpeak, emit };
 }

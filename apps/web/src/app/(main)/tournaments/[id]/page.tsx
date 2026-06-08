@@ -12,6 +12,7 @@ import { ReportResultModal } from "@/components/bracket/ReportResultModal";
 import { BracketLaunchModal } from "@/components/bracket/BracketLaunchModal";
 import { StandingsView, computeStandings } from "@/components/bracket/StandingsView";
 import { GestionTab } from "@/components/management/GestionTab";
+import { RefereeView } from "@/components/referee/RefereeView";
 import toast from "react-hot-toast";
 import {
   Trophy, Users, Calendar, Play, CheckCircle, BarChart2,
@@ -1387,10 +1388,24 @@ export default function TournamentDetailPage({ params }: { params: Promise<{ id:
   const [launchMatch, setLaunchMatch] = useState<Match | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const { connected, onMatchUpdated, onTournamentUpdated } = useSocket(id);
+  const { connected, onMatchUpdated, onTournamentUpdated, onAnnouncerSpeak, emit: emitSocket } = useSocket(id);
   const router = useRouter();
 
   const isOrganizer = user && tournament && (user.id === tournament.createdBy || user.role === "admin" || user.role === "organizer");
+
+  // Referee detection — check if the current user is a referee for this tournament
+  const [myRefereeData, setMyRefereeData] = useState<any>(null);
+  const [loadingReferee, setLoadingReferee] = useState(true);
+
+  useEffect(() => {
+    if (!user) { setLoadingReferee(false); return; }
+    api.get(`/tournaments/${id}/my-referee`)
+      .then(r => setMyRefereeData(r.data.data))
+      .catch(() => {})
+      .finally(() => setLoadingReferee(false));
+  }, [id, user]);
+
+  const isReferee = !!myRefereeData && !isOrganizer;
 
   // Load data
   const loadData = useCallback(async () => {
@@ -1714,7 +1729,7 @@ export default function TournamentDetailPage({ params }: { params: Promise<{ id:
     }
   };
 
-  if (loading) {
+  if (loading || loadingReferee) {
     return (
       <div className="flex items-center justify-center min-h-64">
         <div className="animate-spin w-8 h-8 border-2 border-red-500 border-t-transparent rounded-full" />
@@ -1722,6 +1737,27 @@ export default function TournamentDetailPage({ params }: { params: Promise<{ id:
     );
   }
   if (!tournament) return <div className="text-center text-gray-400 py-20">Torneo no encontrado</div>;
+
+  // Referee view — shown instead of the full tournament page when the user is a referee (not organizer)
+  if (isReferee) {
+    return (
+      <>
+        <RefereeView
+          tournament={tournament}
+          refereeData={myRefereeData}
+          onReport={(match) => setReportMatch(match)}
+        />
+        {reportMatch && (
+          <ReportResultModal
+            match={reportMatch}
+            tournament={tournament}
+            onClose={() => setReportMatch(null)}
+            onSuccess={() => { setReportMatch(null); loadData(); }}
+          />
+        )}
+      </>
+    );
+  }
 
   // Multi-level bracket support
   const bracketLevels = getBracketLevels(matches, tournament.levels ?? []);
@@ -2497,6 +2533,8 @@ export default function TournamentDetailPage({ params }: { params: Promise<{ id:
           tournament={tournament}
           matches={matches}
           onMatchesChange={loadData}
+          onAnnouncerSpeak={onAnnouncerSpeak}
+          emitSocket={emitSocket}
         />
       )}
 

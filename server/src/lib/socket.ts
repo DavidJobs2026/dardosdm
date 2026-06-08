@@ -3,6 +3,13 @@ import { Server as SocketServer } from "socket.io";
 import { verifyAccessToken } from "../utils/jwt";
 import { prisma } from "./prisma";
 
+// In-memory map of tournamentId → masterSocketId (the device connected to PA speakers)
+const masterAnnouncers = new Map<string, string>();
+
+export function getMasterAnnouncerSocketId(tournamentId: string): string | undefined {
+  return masterAnnouncers.get(tournamentId);
+}
+
 export function initSocket(httpServer: HttpServer): SocketServer {
   const io = new SocketServer(httpServer, {
     cors: { origin: process.env.CLIENT_URL || "http://localhost:3000", credentials: true },
@@ -32,12 +39,15 @@ export function initSocket(httpServer: HttpServer): SocketServer {
   });
 
   io.on("connection", (socket) => {
-    // Join tournament room — verify tournament exists before allowing the join
+    // Join tournament room — verify tournament exists and is accessible
     socket.on("join:tournament", async (tournamentId: string) => {
       try {
         if (typeof tournamentId !== "string" || !tournamentId) return;
-        const exists = await prisma.tournament.count({ where: { id: tournamentId } });
-        if (!exists) return;
+        const tournament = await prisma.tournament.findUnique({ where: { id: tournamentId }, select: { isPublic: true } });
+        if (!tournament) return;
+        const user = (socket as any).user;
+        const isPrivileged = user?.role === "organizer" || user?.role === "admin";
+        if (!isPrivileged && tournament.isPublic === false) return;
         socket.join(`tournament:${tournamentId}`);
       } catch {
         // silently ignore
@@ -50,8 +60,27 @@ export function initSocket(httpServer: HttpServer): SocketServer {
       }
     });
 
+    // ── Master announcer (PA speaker) ─────────────────────────────────────────
+    socket.on("announcer:register", (tournamentId: string) => {
+      if (typeof tournamentId !== "string" || !tournamentId) return;
+      const user = (socket as any).user;
+      if (user?.role !== "organizer" && user?.role !== "admin") return;
+      masterAnnouncers.set(tournamentId, socket.id);
+      socket.emit("announcer:status", { active: true, tournamentId });
+    });
+
+    socket.on("announcer:unregister", (tournamentId: string) => {
+      if (masterAnnouncers.get(tournamentId) === socket.id) {
+        masterAnnouncers.delete(tournamentId);
+        socket.emit("announcer:status", { active: false, tournamentId });
+      }
+    });
+
     socket.on("disconnect", () => {
-      // cleanup handled by socket.io
+      // Clean up master announcer if this socket was the master
+      for (const [tid, sid] of masterAnnouncers.entries()) {
+        if (sid === socket.id) masterAnnouncers.delete(tid);
+      }
     });
   });
 
