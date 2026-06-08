@@ -341,10 +341,10 @@ export function RefereeView({ tournament, refereeData, onReport }: Props) {
 
         {/* ── Historial de resultados ── */}
         {(() => {
+          // Completed matches have diana freed (diana.matchId = null), so m.diana is null.
+          // Show all completed matches for the tournament so the referee can see and correct any.
           const doneMatches = matches.filter(m =>
-            m.status === "completed" &&
-            m.diana &&
-            myDianaNumbers.has(m.diana.number)
+            m.status === "completed"
           ).sort((a, b) =>
             new Date(b.playedAt ?? 0).getTime() -
             new Date(a.playedAt ?? 0).getTime()
@@ -369,10 +369,12 @@ export function RefereeView({ tournament, refereeData, onReport }: Props) {
                       ? `Ganador: ${winnerName2}`
                       : "–";
                   const playedAt = m.playedAt;
+                  // bracketLevel as short label (e.g. "R16", "QF", "SF", "F")
+                  const levelLabel = m.bracketLevel ?? "–";
                   return (
                     <div key={m.id} className="bg-ink-900 border border-ink-800 rounded-xl px-3 py-2.5 flex items-center gap-3">
-                      <div className="w-7 h-7 rounded-lg bg-ink-800 border border-ink-700 flex items-center justify-center text-ink-400 font-bold text-xs shrink-0">
-                        {m.diana?.number}
+                      <div className="w-7 h-7 rounded-lg bg-ink-800 border border-ink-700 flex items-center justify-center text-ink-400 font-bold text-[10px] shrink-0 text-center leading-tight">
+                        {levelLabel}
                       </div>
                       <div className="flex-1 min-w-0">
                         <p className="text-xs font-semibold text-white truncate">
