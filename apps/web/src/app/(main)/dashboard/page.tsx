@@ -1320,6 +1320,7 @@ const ACTION_LABELS: Record<string, string> = {
   "participant.no_show":          "No presentado",
   "match.report":                 "Resultado registrado",
   "match.reset":                  "Resultado reiniciado",
+  "match.recall":                 "Aviso de partido",
   "user.role_change":             "Rol cambiado",
   "user.reset_password":          "Contraseña restablecida",
   "user.ban":                     "Usuario bloqueado",
@@ -1333,7 +1334,43 @@ const ACTION_COLOR: Record<string, string> = {
   "user.role_change":    "text-yellow-400 bg-yellow-900/20",
   "user.reset_password": "text-yellow-400 bg-yellow-900/20",
   "match.report":        "text-blue-400 bg-blue-900/20",
+  "match.recall":        "text-violet-400 bg-violet-900/20",
 };
+
+/** Build a compact detail string from the stored details object */
+function buildDetailLine(log: AuditEntry): string | null {
+  const d = log.details as Record<string, unknown> | null;
+  if (!d) return null;
+  const parts: string[] = [];
+
+  if (log.action === "match.recall" || log.action === "match.report") {
+    if (d.reporterRole) parts.push(d.reporterRole === "referee" ? "🟣 Árbitro" : "🔵 Organizador");
+    if (d.diana != null) parts.push(`Diana ${d.diana}`);
+    if (log.action === "match.recall" && d.callNumber != null) {
+      parts.push(`${d.callNumber}ª llamada`);
+    }
+    if (log.action === "match.report") {
+      if (d.score1 != null && d.score2 != null) {
+        // find winner name from p1/p2
+        const winnerName =
+          d.winnerId === null ? null
+          : d.p1Name && d.p2Name
+            ? (d.score1 as number) > (d.score2 as number) ? String(d.p1Name) : String(d.p2Name)
+            : null;
+        parts.push(`${d.score1} – ${d.score2}${winnerName ? ` (${winnerName})` : ""}`);
+      } else if (d.p1Name || d.p2Name) {
+        // winnerOnly mode — find winner by winnerId not directly available here, show score anyway
+      }
+      if (d.bracketLevel) parts.push(String(d.bracketLevel));
+    }
+  }
+
+  if (log.action === "user.role_change" && d.from && d.to) {
+    parts.push(`${d.from} → ${d.to}`);
+  }
+
+  return parts.length > 0 ? parts.join("  ·  ") : null;
+}
 
 interface AuditEntry {
   id: string;
@@ -1417,35 +1454,42 @@ function AuditLogPanel() {
         <p className="text-center text-ink-500 py-10 text-sm">Sin registros</p>
       ) : (
         <div className="space-y-1.5">
-          {logs.map(log => (
+          {logs.map(log => {
+            const detailLine = buildDetailLine(log);
+            return (
             <div key={log.id} className="flex items-start gap-3 p-3 rounded-xl bg-ink-800 border border-ink-700/60">
               <div className="min-w-0 flex-1">
+                {/* Row 1: action badge + entity name */}
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className={clsx(
-                    "inline-flex items-center px-2 py-0.5 rounded-md text-xs font-semibold",
+                    "inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-semibold shrink-0",
                     ACTION_COLOR[log.action] ?? "text-ink-300 bg-ink-700"
                   )}>
                     {ACTION_LABELS[log.action] ?? log.action}
                   </span>
                   {log.entityName && (
-                    <span className="text-ink-300 text-xs font-medium truncate max-w-[160px]" title={log.entityName}>
+                    <span className="text-ink-300 text-xs font-medium" title={log.entityName}>
                       {log.entityName}
                     </span>
                   )}
                 </div>
-                <div className="flex items-center gap-3 mt-1.5 text-xs text-ink-500 flex-wrap">
+                {/* Row 2: action-specific details (diana, call, score, role…) */}
+                {detailLine && (
+                  <p className="mt-1 text-[11px] text-ink-400 leading-snug">
+                    {detailLine}
+                  </p>
+                )}
+                {/* Row 3: who · when · ip */}
+                <div className="flex items-center gap-2 mt-1 text-[11px] text-ink-500 flex-wrap">
                   <span className="font-medium text-ink-400">{log.user.name}</span>
                   <span>·</span>
                   <span>{fmt(log.createdAt)}</span>
                   {log.ip && <><span>·</span><span className="font-mono">{log.ip}</span></>}
-                  {log.details && log.action === "user.role_change" && (log.details as any).from && (
-                    <><span>·</span>
-                    <span>{(log.details as any).from} → {(log.details as any).to}</span></>
-                  )}
                 </div>
               </div>
             </div>
-          ))}
+            );
+          })}
         </div>
       )}
 
