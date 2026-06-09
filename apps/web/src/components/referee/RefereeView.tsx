@@ -209,11 +209,26 @@ export function RefereeView({ tournament, refereeData, onReport }: Props) {
 
   useEffect(() => { loadData(); }, [loadData]);
 
-  // Auto-refresh every 15s + live socket updates
+  // Lightweight 15s poll — only fetch non-completed matches to keep payload small.
+  // Completed matches from the last full load are kept in state for the history section.
+  const pollActive = useCallback(async () => {
+    try {
+      const mRes = await api.get(`/tournaments/${tournament.id}/matches?onlyActive=true`);
+      const fresh: Match[] = mRes.data.data ?? [];
+      const freshIds = new Set(fresh.map((m: Match) => m.id));
+      setMatches(prev => [
+        ...prev.filter((m: Match) => (m.status === "completed" || m.status === "bye") && !freshIds.has(m.id)),
+        ...fresh,
+      ]);
+    } catch { /* silent */ }
+  }, [tournament.id]);
+
   useEffect(() => {
-    const id = setInterval(loadData, 15000);
+    const id = setInterval(pollActive, 15000);
     return () => clearInterval(id);
-  }, [loadData]);
+  }, [pollActive]);
+
+  // Full reload on socket match event (covers bracket advancement, new completions)
   useEffect(() => {
     const unsub = onMatchUpdated(() => loadData());
     return unsub;

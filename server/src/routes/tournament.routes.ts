@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { Server as SocketServer } from "socket.io";
+import rateLimit from "express-rate-limit";
 import {
   listTournaments, getTournament, createTournament,
   updateTournament, deleteTournament, startTournament, startLevel,
@@ -19,6 +20,16 @@ import { listDianas, setupDianas, saveLayout, assignDiana, unassignDiana, delete
 import { authenticate, requireRole, optionalAuthenticate } from "../middlewares/auth.middleware";
 import { tournamentImageUpload } from "../middlewares/upload.middleware";
 import { uploadTournamentImage, removeTournamentImage } from "../controllers/tournament.controller";
+
+// Tighter limiter for state-changing operations (result, recall, no-show, launch…)
+// 300 writes per 15 min per IP — prevents runaway clients / bots hammering mutations
+const writeLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 300,
+  message: "Demasiadas acciones seguidas, espera un momento",
+  standardHeaders: true,
+  legacyHeaders: false,
+});
 
 export default function tournamentRoutes(io: SocketServer): Router {
   const router = Router();
@@ -63,22 +74,22 @@ export default function tournamentRoutes(io: SocketServer): Router {
   // Matches
   router.get("/:id/matches",           authenticate, listMatches);
   router.get("/:id/matches/:matchId",  authenticate, getMatch);
-  router.post("/:id/matches/:matchId/result", authenticate, reportResult(io));
-  router.post("/:id/matches/:matchId/reset-result", authenticate, resetMatchResult);
+  router.post("/:id/matches/:matchId/result",       authenticate, writeLimiter, reportResult(io));
+  router.post("/:id/matches/:matchId/reset-result", authenticate, writeLimiter, resetMatchResult);
   router.post("/:id/repair-bracket", authenticate, repairBracket);
 
   // Dianas
   router.get("/:id/dianas", authenticate, listDianas);
-  router.post("/:id/dianas/setup", authenticate, setupDianas);
-  router.put("/:id/dianas/layout", authenticate, saveLayout);
-  router.post("/:id/dianas/bulk-delete", authenticate, bulkDeleteDianas);
-  router.delete("/:id/dianas/:dianaId", authenticate, deleteDiana);
-  router.patch("/:id/dianas/:dianaId/broken", authenticate, toggleBrokenDiana);
-  router.post("/:id/matches/:matchId/assign-diana", authenticate, assignDiana);
-  router.delete("/:id/matches/:matchId/diana", authenticate, unassignDiana);
-  router.post("/:id/matches/:matchId/launch", authenticate, launchMatch);
-  router.post("/:id/matches/:matchId/recall", authenticate, recallMatch);
-  router.post("/:id/matches/:matchId/no-show", authenticate, noShowMatch(io));
+  router.post("/:id/dianas/setup",              authenticate, writeLimiter, setupDianas);
+  router.put("/:id/dianas/layout",              authenticate, writeLimiter, saveLayout);
+  router.post("/:id/dianas/bulk-delete",        authenticate, writeLimiter, bulkDeleteDianas);
+  router.delete("/:id/dianas/:dianaId",         authenticate, writeLimiter, deleteDiana);
+  router.patch("/:id/dianas/:dianaId/broken",   authenticate, writeLimiter, toggleBrokenDiana);
+  router.post("/:id/matches/:matchId/assign-diana", authenticate, writeLimiter, assignDiana);
+  router.delete("/:id/matches/:matchId/diana",      authenticate, writeLimiter, unassignDiana);
+  router.post("/:id/matches/:matchId/launch",       authenticate, writeLimiter, launchMatch);
+  router.post("/:id/matches/:matchId/recall",       authenticate, writeLimiter, recallMatch);
+  router.post("/:id/matches/:matchId/no-show",      authenticate, writeLimiter, noShowMatch(io));
 
   // Round Robin
   router.get("/:id/rr-standings", authenticate, getRRStandings);

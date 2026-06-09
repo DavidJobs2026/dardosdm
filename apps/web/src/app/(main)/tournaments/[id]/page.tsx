@@ -1462,14 +1462,29 @@ export default function TournamentDetailPage({ params }: { params: Promise<{ id:
     return unsub;
   }, [onTournamentUpdated, loadData]);
 
+  // Lightweight poll: fetch only active (non-completed/bye) matches every 15s.
+  // Completed matches are retained from the last full load, avoiding a large payload on every tick.
+  const pollActiveMatches = useCallback(async () => {
+    try {
+      const mRes = await api.get(`/tournaments/${id}/matches?onlyActive=true`);
+      const fresh: Match[] = mRes.data.data ?? [];
+      const freshIds = new Set(fresh.map((m: Match) => m.id));
+      setMatches(prev => [
+        // Keep completed/bye matches from the last full load
+        ...prev.filter((m: Match) => (m.status === "completed" || m.status === "bye") && !freshIds.has(m.id)),
+        ...fresh,
+      ]);
+    } catch { /* silent — last state stays */ }
+  }, [id]);
+
   // Polling fallback: if socket is disconnected, poll every 15s when tournament
   // is active so the bracket appears without a manual page reload
   useEffect(() => {
     if (!tournament) return;
     if (tournament.status !== "registration" && tournament.status !== "in_progress") return;
-    const interval = setInterval(() => { loadData(); }, 15_000);
+    const interval = setInterval(pollActiveMatches, 15_000);
     return () => clearInterval(interval);
-  }, [tournament?.status, loadData]);
+  }, [tournament?.status, pollActiveMatches]);
 
   // Organizer actions
   const handleOpenRegistration = async () => {

@@ -24,7 +24,7 @@ export const listMatches = async (req: AuthRequest, res: Response, next: NextFun
       if (!tournament || tournament.isPublic === false) return next(notFound("Tournament"));
     }
 
-    const { round, bracketSide } = req.query;
+    const { round, bracketSide, onlyActive } = req.query;
     const validSides = ["winners", "losers"] as const;
     const roundNum   = round ? Number(round) : undefined;
 
@@ -32,6 +32,8 @@ export const listMatches = async (req: AuthRequest, res: Response, next: NextFun
       tournamentId: req.params.id,
       ...(roundNum !== undefined && !isNaN(roundNum) ? { round: roundNum } : {}),
       ...(bracketSide && validSides.includes(bracketSide as any) ? { bracketSide: bracketSide as string } : {}),
+      // ?onlyActive=true → skip completed/bye matches (used by 15s polling to reduce payload)
+      ...(onlyActive === "true" ? { status: { notIn: ["completed", "bye"] as ("completed" | "bye")[] } } : {}),
     };
 
     const matches = await prisma.match.findMany({
