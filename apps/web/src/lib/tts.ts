@@ -641,7 +641,7 @@ export async function announceWarning(playerName: string, dianaNumber: number, c
   _enqueue([_u(text, voice), _u(text, voice)]);
 }
 
-/** No-show: "PlayerName. PlayerName. Eliminado." */
+/** No-show: "PlayerName. PlayerName. No presentado." */
 export async function announceEliminated(name: string) {
   if (typeof window === "undefined" || !window.speechSynthesis) return;
   const voice = await _getVoice();
@@ -649,6 +649,6 @@ export async function announceEliminated(name: string) {
   _enqueue([
     _u(n, voice, 0.82),
     _u(n, voice, 0.82),
-    _u("Eliminado", voice, 0.72),
+    _u("No presentado", voice, 0.72),
   ]);
 }
