@@ -36,6 +36,7 @@ export const errorHandler = (
       P2003: "Referencia inválida",                            // FK constraint
       P2025: "Registro no encontrado",                         // record not found on update/delete
       P2016: "Error en la consulta",                           // query interpretation
+      P2021: "Tabla no encontrada en la base de datos (migración pendiente)",  // table missing
       P2022: "Campo no encontrado en la base de datos",        // column missing (migration pending)
     };
     const message = safeMessages[prismaErr.code] ?? "Error de base de datos";
