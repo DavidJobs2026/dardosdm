@@ -334,14 +334,25 @@ export const deleteTournament = async (req: AuthRequest, res: Response, next: Ne
 };
 
 /**
- * Generate a group label for index i that works beyond 26:
- *   0→A, 1→B … 25→Z, 26→A2, 27→B2 … 51→Z2, 52→A3 …
- * Supports up to 260 groups (enough for 2080 players at group size 8).
+ * Generate a group label for group index i within a level.
+ *
+ * If the level has a name (bracketLevel), groups are prefixed with it:
+ *   level "A"       →  A1, A2, A3 …
+ *   level "B"       →  B1, B2, B3 …
+ *   level "Nivel 1" →  Nivel 1-1, Nivel 1-2 …  (long names get a dash separator)
+ *
+ * For tournaments without levels (bracketLevel = null) groups are simply:
+ *   G1, G2, G3 … (no alphabet overflow possible)
  */
-function rrGroupLabel(i: number): string {
-  const letter = String.fromCharCode(65 + (i % 26));
-  const num    = Math.floor(i / 26);
-  return num === 0 ? letter : `${letter}${num + 1}`;
+function rrGroupLabel(i: number, bracketLevel: string | null): string {
+  if (bracketLevel) {
+    const prefix = bracketLevel.trim();
+    // Use a dash only when the prefix is longer than 2 chars (e.g. "Nivel 1-3")
+    const sep = prefix.length > 2 ? "-" : "";
+    return `${prefix}${sep}${i + 1}`;
+  }
+  // No category → simple numbered groups: G1, G2 …
+  return `G${i + 1}`;
 }
 
 /** Helper: generate RR groups + match data for a slice of participants within one level.
@@ -379,7 +390,7 @@ function buildRRGroups(
     }
   }
   const groupCount = Math.ceil(ordered.length / rrGroupSize);
-  const groupNames = Array.from({ length: groupCount }, (_, i) => rrGroupLabel(i));
+  const groupNames = Array.from({ length: groupCount }, (_, i) => rrGroupLabel(i, bracketLevel));
   const groups     = new Map<string, typeof participants>(groupNames.map(g => [g, []]));
   ordered.forEach((p, i) => groups.get(groupNames[i % groupCount])!.push(p));
 
@@ -536,7 +547,8 @@ export const startTournament = async (req: AuthRequest, res: Response, next: Nex
       }
 
       const groupCount = Math.ceil(participants.length / groupSize);
-      const groupNames = Array.from({ length: groupCount }, (_, i) => rrGroupLabel(i));
+      // bracketLevel is null here (no levels) → groups: G1, G2, G3 …
+      const groupNames = Array.from({ length: groupCount }, (_, i) => rrGroupLabel(i, null));
 
       // Balanced round-robin assignment: deal cards to groups in order
       const groups = new Map<string, typeof participants[number][]>(
