@@ -57,12 +57,11 @@ export const useAuthStore = create<AuthState>()(
           const { data } = await api.post("/auth/register", { email, password, name, role, ...extra });
           const { user, tokens, requiresEmailVerification } = data.data;
 
-          if (requiresEmailVerification) {
+          if (requiresEmailVerification || !tokens) {
             // Player registered — no tokens issued until email is verified.
             // Caller (registro/page.tsx) handles the redirect to /verificar-email/pendiente.
             set({ user: null, accessToken: null });
           } else {
-            // Organizer / admin — pre-verified, tokens issued immediately.
             setAccessToken(tokens.accessToken);
             set({ user, accessToken: tokens.accessToken });
           }

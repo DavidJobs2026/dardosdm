@@ -394,38 +394,40 @@ export const blindPair = async (req: AuthRequest, res: Response, next: NextFunct
     shuffle(high);
     shuffle(low);
 
-    // Create team per pair, update participant entityType to "parejas", set teamId
-    const created: { teamName: string; player1: string; player2: string }[] = [];
+    const pairs = await prisma.$transaction(async (tx) => {
+      const results: { teamName: string; player1: string; player2: string }[] = [];
 
-    for (let i = 0; i < half; i++) {
-      const p1 = high[i];
-      const p2 = low[i];
-      const teamName = `${p1.user?.name ?? "J1"} & ${p2.user?.name ?? "J2"}`;
+      for (let i = 0; i < half; i++) {
+        const p1 = high[i];
+        const p2 = low[i];
+        const teamName = `${p1.user?.name ?? "J1"} & ${p2.user?.name ?? "J2"}`;
 
-      const team = await prisma.team.create({
-        data: {
-          name:        teamName,
-          createdById: req.user!.userId,
-          members: {
-            create: [
-              { userId: p1.userId!, role: "captain" },
-              { userId: p2.userId!, role: "member"  },
-            ],
+        const team = await tx.team.create({
+          data: {
+            name:        teamName,
+            createdById: req.user!.userId,
+            members: {
+              create: [
+                { userId: p1.userId!, role: "captain" },
+                { userId: p2.userId!, role: "member"  },
+              ],
+            },
           },
-        },
-      });
+        });
 
-      // Update both individual participants: remove one, update the other to teamId
-      await prisma.participant.update({
-        where: { id: p1.id },
-        data:  { teamId: team.id, entityType: "parejas" as any, userId: null },
-      });
-      await prisma.participant.delete({ where: { id: p2.id } });
+        await tx.participant.update({
+          where: { id: p1.id },
+          data:  { teamId: team.id, entityType: "parejas" as any, userId: null },
+        });
+        await tx.participant.delete({ where: { id: p2.id } });
 
-      created.push({ teamName, player1: p1.user?.name ?? "", player2: p2.user?.name ?? "" });
-    }
+        results.push({ teamName, player1: p1.user?.name ?? "", player2: p2.user?.name ?? "" });
+      }
 
-    return res.json({ data: { pairs: created } });
+      return results;
+    });
+
+    return res.json({ data: { pairs } });
   } catch (err) {
     next(err);
   }

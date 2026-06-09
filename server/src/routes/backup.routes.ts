@@ -1,7 +1,17 @@
 import { Router, IRouter } from "express";
+import rateLimit from "express-rate-limit";
 import { authenticate, requireRole } from "../middlewares/auth.middleware";
 import { runBackup, createBackupJson } from "../lib/backup";
 const router: IRouter = Router();
+
+// 3 downloads per hour per IP — prevents memory exhaustion from concurrent full exports
+const downloadLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 3,
+  message: "Demasiadas descargas, espera 1 hora",
+  standardHeaders: true,
+  legacyHeaders: false,
+});
 
 let lastBackupAt: string | null = null;
 let lastBackupStatus: string    = "Nunca ejecutado";
@@ -29,7 +39,7 @@ router.get("/status", authenticate, requireRole("admin"), (_req, res) => {
 /**
  * GET /backup/download — export all tables as JSON and stream to browser
  */
-router.get("/download", authenticate, requireRole("admin"), async (_req, res, next) => {
+router.get("/download", authenticate, requireRole("admin"), downloadLimiter, async (_req, res, next) => {
   try {
     const timestamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
     const { json: backupJson } = await createBackupJson();

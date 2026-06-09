@@ -236,31 +236,6 @@ export const register = async (req: Request, res: Response, next: NextFunction) 
           emailVerified: false,
         },
         requiresEmailVerification: true,
-        // No tokens issued until email is verified
-      },
-    });
-
-    // (unreachable — kept as a reminder: token issuance only in login, never register)
-    const payload = { userId: user.id, role: user.role };
-    const accessToken = signAccessToken(payload);
-    const refreshToken = signRefreshToken(payload);
-
-    const expiresAt = new Date(Date.now() + COOKIE_MAX_AGE);
-    await prisma.refreshToken.create({
-      data: { token: refreshToken, userId: user.id, expiresAt, userAgent: extractUserAgent(req) },
-    });
-
-    setRefreshCookie(res, refreshToken);
-
-    return res.status(201).json({
-      data: {
-        user: {
-          id: user.id, email: user.email, name: user.name, role: user.role,
-          elo: user.elo, createdAt: user.createdAt,
-          emailVerified: user.emailVerified,
-        },
-        tokens: { accessToken },
-        requiresEmailVerification: false,
       },
     });
   } catch (err) {

@@ -259,6 +259,7 @@ model Participant {
 
   @@unique([tournamentId, userId])
   @@unique([tournamentId, teamId])
+  @@index([tournamentId, inscriptionStatus])
   @@map("participants")
 }
 
@@ -383,8 +384,8 @@ model PlayerRecord {
 
 model AuditLog {
   id         String   @id @default(cuid())
-  userId     String   @map("user_id")
-  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId     String?  @map("user_id")
+  user       User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
   action     String                        // "tournament.create" | "tournament.delete" | etc.
   entityType String   @map("entity_type") // "tournament" | "match" | "participant" | "user"
   entityId   String?  @map("entity_id")
