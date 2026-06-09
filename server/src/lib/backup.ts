@@ -18,7 +18,15 @@ export async function createBackupJson(): Promise<{ json: string; truncated: str
     playerRecords, auditLogs,
     totalMatches, totalAuditLogs,
   ] = await Promise.all([
-    prisma.user.findMany(),
+    prisma.user.findMany({
+      select: {
+        id: true, email: true, name: true, role: true, elo: true,
+        dni: true, phone: true, province: true, birthDate: true,
+        ligaCard: true, clubCard: true, avatarUrl: true,
+        gdprConsent: true, whatsappConsent: true, emailConsent: true,
+        emailVerified: true, createdAt: true, updatedAt: true,
+      },
+    }),
     prisma.tournament.findMany({ include: { levels: true } }),
     prisma.participant.findMany(),
     // Cap at most-recent 50k — full history stays in the DB

@@ -32,10 +32,10 @@ router.get("/status", authenticate, requireRole("admin"), (_req, res) => {
 router.get("/download", authenticate, requireRole("admin"), async (_req, res, next) => {
   try {
     const timestamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
-    const json = await createBackupJson();
+    const { json: backupJson } = await createBackupJson();
     res.setHeader("Content-Type", "application/json");
     res.setHeader("Content-Disposition", `attachment; filename="dardosdm-backup-${timestamp}.json"`);
-    res.send(json);
+    res.send(backupJson);
   } catch (err) { next(err); }
 });
 

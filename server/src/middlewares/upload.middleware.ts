@@ -1,6 +1,7 @@
 import multer from "multer";
 import path from "path";
 import fs from "fs";
+import crypto from "crypto";
 import { Request, Response, NextFunction, RequestHandler } from "express";
 
 const UPLOADS_DIR = process.env.UPLOADS_PATH
@@ -105,7 +106,7 @@ export const tournamentImageUpload: RequestHandler = (
 
     // ── Write to disk ──────────────────────────────────────────────────────
     const ext      = MIME_TO_EXT[detectedMime];
-    const unique   = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const unique   = crypto.randomBytes(16).toString("hex");
     const filename = `${unique}${ext}`;
     const filepath = path.join(UPLOADS_DIR, filename);
 

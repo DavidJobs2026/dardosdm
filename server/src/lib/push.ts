@@ -27,16 +27,9 @@ export async function sendPushToUser(
   const subs = await prisma.pushSubscription.findMany({ where: { userId } });
 
   if (subs.length === 0) {
-    // Help diagnose mismatched userId — show which users DO have subscriptions
-    const allSubs = await prisma.pushSubscription.findMany({
-      select: { userId: true, user: { select: { name: true, email: true } } },
-    });
-    const subSummary = allSubs.map(s => `${s.userId}(${s.user?.name ?? "?"})`).join(", ");
-    console.warn(`[push] userId=${userId} → 0 subs. Users WITH subs: [${subSummary || "NONE"}]`);
-  } else {
-    console.log(`[push] userId=${userId} → ${subs.length} subscriptions found`);
+    console.warn(`[push] userId=${userId} → 0 subscriptions, skipping`);
+    return;
   }
-  if (!subs.length) return;
 
   const json = JSON.stringify(payload);
 

@@ -2,7 +2,7 @@ import { Response, NextFunction } from "express";
 import { z } from "zod";
 import crypto from "crypto";
 import { prisma } from "../lib/prisma";
-import { AuthRequest } from "../middlewares/auth.middleware";
+import { AuthRequest, invalidateUserCache } from "../middlewares/auth.middleware";
 import bcrypt from "bcryptjs";
 import { badRequest, forbidden, notFound } from "../utils/errors";
 import { Prisma } from "@prisma/client";
@@ -471,6 +471,7 @@ export const updateUserRole = async (req: AuthRequest, res: Response, next: Next
       data: { role },
       select: { id: true, name: true, email: true, role: true },
     });
+    invalidateUserCache(req.params.id);
     audit({ req, action: "user.role_change", entityType: "user", entityId: updated.id, entityName: updated.name, details: { from: target?.role, to: role } });
 
     // Alert all admins about the role change (fire-and-forget)

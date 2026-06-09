@@ -49,6 +49,8 @@ export const listPlayerRecords = async (req: AuthRequest, res: Response, next: N
     if (season)   where.season = season;
     if (gameType) where.gameType = gameType;
 
+    const isPrivileged = req.user?.role === "organizer" || req.user?.role === "admin";
+
     const [records, total] = await Promise.all([
       prisma.playerRecord.findMany({
         where,
@@ -59,8 +61,12 @@ export const listPlayerRecords = async (req: AuthRequest, res: Response, next: N
       prisma.playerRecord.count({ where }),
     ]);
 
+    const data = isPrivileged
+      ? records
+      : records.map(({ dni, cardNumber, ...rest }) => rest);
+
     return res.json({
-      data: records,
+      data,
       total,
       page,
       limit,
@@ -271,6 +277,7 @@ function avgOf(nums: (number | null | undefined)[]): number | null {
 
 export const searchForInscription = async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
+    const isPrivileged = req.user?.role === "organizer" || req.user?.role === "admin";
     const q               = String(req.query.q               || "").trim();
     const gameType        = String(req.query.gameType        || "").trim();
     const preferredSeason = String(req.query.preferredSeason || "").trim() || null;
@@ -351,8 +358,7 @@ export const searchForInscription = async (req: AuthRequest, res: Response, next
 
     const result = Object.values(byPlayer).slice(0, 20).map(p => ({
       name:        p.name,
-      dni:         p.dni,
-      cardNumber:  p.cardNumber,
+      ...(isPrivileged ? { dni: p.dni, cardNumber: p.cardNumber } : {}),
       teamName:    p.teamName,
       provincia:   p.provincia,
       seasons:     p.seasons,
