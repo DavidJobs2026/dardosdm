@@ -947,11 +947,9 @@ interface GestionTabProps {
   onAnnouncerSpeak?: (cb: (payload: any) => void) => (() => void);
   emitSocket?: (event: string, ...args: any[]) => void;
   socketConnected?: boolean;
-  /** True when the current user is the tournament owner (not just a co-organizer) */
-  isOwner?: boolean;
 }
 
-export function GestionTab({ tournament, matches, onMatchesChange, onAnnouncerSpeak, emitSocket, socketConnected, isOwner = false }: GestionTabProps) {
+export function GestionTab({ tournament, matches, onMatchesChange, onAnnouncerSpeak, emitSocket, socketConnected }: GestionTabProps) {
   const [dianas, setDianas]               = useState<Diana[]>([]);
   const [loadingDianas, setLoadingDianas] = useState(true);
   const [dianaCount, setDianaCount]       = useState<number | string>("");
@@ -965,51 +963,6 @@ export function GestionTab({ tournament, matches, onMatchesChange, onAnnouncerSp
   const [bulkDeleting,     setBulkDeleting]     = useState(false);
   const [confirmBulkDel,   setConfirmBulkDel]   = useState(false);
   const [launchingLevels,  setLaunchingLevels]  = useState<Set<string>>(new Set());
-
-  // ── Co-organizer management ────────────────────────────────────────────────
-  const [coOrgs,          setCoOrgs]          = useState<any[]>([]);
-  const [coOrgSearch,     setCoOrgSearch]     = useState("");
-  const [coOrgResults,    setCoOrgResults]    = useState<any[]>([]);
-  const [coOrgSearching,  setCoOrgSearching]  = useState(false);
-  const [coOrgAdding,     setCoOrgAdding]     = useState(false);
-
-  useEffect(() => {
-    api.get(`/tournaments/${tournament.id}/co-organizers`)
-      .then(r => setCoOrgs(r.data.data ?? []))
-      .catch(() => {});
-  }, [tournament.id]);
-
-  useEffect(() => {
-    if (coOrgSearch.length < 2) { setCoOrgResults([]); return; }
-    setCoOrgSearching(true);
-    const t = setTimeout(async () => {
-      try {
-        const r = await api.get(`/users/search?q=${encodeURIComponent(coOrgSearch)}`);
-        setCoOrgResults((r.data.data ?? []).filter((u: any) => u.role === "organizer" || u.role === "admin"));
-      } catch { /* silent */ } finally { setCoOrgSearching(false); }
-    }, 300);
-    return () => clearTimeout(t);
-  }, [coOrgSearch]);
-
-  const handleAddCoOrg = async (u: any) => {
-    setCoOrgAdding(true);
-    try {
-      const r = await api.post(`/tournaments/${tournament.id}/co-organizers`, { userId: u.id });
-      setCoOrgs(prev => [...prev.filter((x: any) => x.userId !== u.id), r.data.data]);
-      setCoOrgSearch(""); setCoOrgResults([]);
-      toast.success(`Acceso concedido a ${u.name}`);
-    } catch (e: any) {
-      toast.error(e?.response?.data?.message ?? "Error al conceder acceso");
-    } finally { setCoOrgAdding(false); }
-  };
-
-  const handleRemoveCoOrg = async (id: string) => {
-    try {
-      await api.delete(`/tournaments/${tournament.id}/co-organizers/${id}`);
-      setCoOrgs(prev => prev.filter((c: any) => c.id !== id));
-      toast.success("Acceso revocado");
-    } catch { toast.error("Error al revocar acceso"); }
-  };
 
   // ── Referee management ─────────────────────────────────────────────────────
   const [referees, setReferees] = useState<any[]>([]);
@@ -1320,76 +1273,6 @@ export function GestionTab({ tournament, matches, onMatchesChange, onAnnouncerSp
       )}
 
       <div className="space-y-6">
-        {/* ── Co-organizadores ─────────────────────────────────────────────── */}
-        <div className="bg-ink-900 border border-ink-800 rounded-2xl p-5 space-y-4">
-          <h2 className="font-bold text-white flex items-center gap-2 text-sm uppercase tracking-wider">
-            <svg className="w-4 h-4 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M17 20h5v-2a4 4 0 00-5.364-3.77M9 20H4v-2a4 4 0 015.364-3.77M15 7a4 4 0 11-8 0 4 4 0 018 0zm6 4a3 3 0 11-6 0 3 3 0 016 0zm-18 0a3 3 0 11-6 0 3 3 0 016 0z" />
-            </svg>
-            Co-organizadores
-          </h2>
-          {isOwner && <p className="text-xs text-ink-500">Los co-organizadores pueden ver y gestionar este torneo con los mismos permisos que tú, excepto añadir o quitar otros co-organizadores.</p>}
-
-          {/* Current co-organizers */}
-          {coOrgs.length > 0 && (
-            <div className="space-y-2">
-              {coOrgs.map((c: any) => (
-                <div key={c.id} className="flex items-center gap-3 px-3 py-2 bg-ink-800/50 rounded-xl border border-ink-700">
-                  <div className="w-7 h-7 rounded-lg bg-emerald-900/30 border border-emerald-700/40 flex items-center justify-center shrink-0">
-                    <svg className="w-3.5 h-3.5 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                    </svg>
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-semibold text-white truncate">{c.user?.name ?? "—"}</p>
-                    <p className="text-[11px] text-ink-500">{c.user?.email}</p>
-                  </div>
-                  <button
-                    onClick={() => handleRemoveCoOrg(c.id)}
-                    className="p-1.5 text-ink-600 hover:text-red-400 transition-colors rounded-lg hover:bg-red-900/10"
-                    title="Revocar acceso"
-                  >
-                    <X className="w-4 h-4" />
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {/* Add co-organizer search — only the owner can grant */}
-          {isOwner && <div className="relative">
-            <input
-              type="text"
-              value={coOrgSearch}
-              onChange={e => setCoOrgSearch(e.target.value)}
-              placeholder="Buscar organizador para añadir…"
-              className="input text-sm w-full"
-            />
-            {(coOrgResults.length > 0 || coOrgSearching) && (
-              <div className="absolute z-10 top-full left-0 right-0 mt-1 bg-ink-900 border border-ink-700 rounded-xl shadow-xl overflow-hidden">
-                {coOrgSearching ? (
-                  <p className="text-xs text-ink-500 px-3 py-2">Buscando…</p>
-                ) : coOrgResults.map((u: any) => (
-                  <button
-                    key={u.id}
-                    onClick={() => handleAddCoOrg(u)}
-                    disabled={coOrgAdding || coOrgs.some((c: any) => c.userId === u.id)}
-                    className="w-full flex items-center gap-3 px-3 py-2 hover:bg-ink-800 transition-colors text-left disabled:opacity-50"
-                  >
-                    <div className="min-w-0 flex-1">
-                      <p className="text-sm font-semibold text-white">{u.name}</p>
-                      <p className="text-[11px] text-ink-500">{u.email}</p>
-                    </div>
-                    {coOrgs.some((c: any) => c.userId === u.id) && (
-                      <span className="text-[10px] text-emerald-400 shrink-0">Ya añadido</span>
-                    )}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>}
-        </div>
-
         {/* ── Árbitros ─────────────────────────────────────────────────────── */}
         <div className="bg-ink-900 border border-ink-800 rounded-2xl p-5 space-y-4">
           <h2 className="font-bold text-white flex items-center gap-2 text-sm uppercase tracking-wider">

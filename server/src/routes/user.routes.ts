@@ -1,11 +1,12 @@
 import { IRouter, Router } from "express";
-import { searchUsers, getMyProfile, batchCreateUsers, findOrCreatePlayer, listPlayers, listUsers, updateUserRole, updateUserName, updateUserPassword, updateUserProfile, resetPasswordToDni, deleteUser, getAuditLogs, clearAuditLogs, absorbGhost, ghostPreview } from "../controllers/user.controller";
+import { searchUsers, getMyProfile, batchCreateUsers, findOrCreatePlayer, listPlayers, listUsers, listOrganizers, updateUserRole, updateUserName, updateUserPassword, updateUserProfile, resetPasswordToDni, deleteUser, getAuditLogs, clearAuditLogs, absorbGhost, ghostPreview } from "../controllers/user.controller";
 import { authenticate } from "../middlewares/auth.middleware";
 
 const router: IRouter = Router();
 
 router.get("/",                    authenticate, listUsers);
 router.get("/audit-logs",          authenticate, getAuditLogs);
+router.get("/organizers",          authenticate, listOrganizers);
 router.delete("/audit-logs",       authenticate, clearAuditLogs);
 router.get("/players",             authenticate, listPlayers);
 router.patch("/:id/profile",       authenticate, updateUserProfile);

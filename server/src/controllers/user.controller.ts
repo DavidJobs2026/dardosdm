@@ -444,6 +444,19 @@ export const listUsers = async (req: AuthRequest, res: Response, next: NextFunct
   } catch (err) { next(err); }
 };
 
+/** GET /users/organizers — list all organizers + admins (accessible to organizers and admins) */
+export const listOrganizers = async (req: AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    if (req.user!.role === "player") return next(forbidden());
+    const users = await prisma.user.findMany({
+      where: { role: { in: ["organizer", "admin"] } },
+      select: { id: true, name: true, email: true, role: true },
+      orderBy: { name: "asc" },
+    });
+    return res.json({ data: users });
+  } catch (err) { next(err); }
+};
+
 /** PATCH /users/:id/role — change user role (admin only) */
 export const updateUserRole = async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {

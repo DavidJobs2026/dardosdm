@@ -620,6 +620,70 @@ function TournamentSetup({
   const [saving,         setSaving]         = useState(false);
   const [resetting,      setResetting]      = useState(false);
 
+  // ── Co-organizer state ───────────────────────────────────────────────────────
+  const { user: currentUser } = useAuthStore();
+  const isOwner = !!(currentUser && (currentUser.role === "admin" || currentUser.id === (tournament as any).createdBy));
+  const [coOrgs,           setCoOrgs]           = useState<any[]>([]);
+  const [allOrganizers,    setAllOrganizers]     = useState<any[]>([]);
+  const [showOrgPicker,    setShowOrgPicker]     = useState(false);
+  const [selectedOrgIds,   setSelectedOrgIds]    = useState<Set<string>>(new Set());
+  const [loadingOrgs,      setLoadingOrgs]       = useState(false);
+  const [addingCoOrgs,     setAddingCoOrgs]      = useState(false);
+
+  useEffect(() => {
+    api.get(`/tournaments/${tournament.id}/co-organizers`)
+      .then(r => setCoOrgs(r.data.data ?? []))
+      .catch(() => {});
+  }, [tournament.id]);
+
+  const handleOpenPicker = async () => {
+    if (allOrganizers.length === 0) {
+      setLoadingOrgs(true);
+      try {
+        const r = await api.get("/users/organizers");
+        setAllOrganizers(r.data.data ?? []);
+      } catch { toast.error("Error cargando organizadores"); }
+      finally { setLoadingOrgs(false); }
+    }
+    setShowOrgPicker(true);
+    setSelectedOrgIds(new Set());
+  };
+
+  const toggleOrgSelection = (id: string) => {
+    setSelectedOrgIds(prev => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  };
+
+  const handleAddSelected = async () => {
+    if (selectedOrgIds.size === 0) return;
+    setAddingCoOrgs(true);
+    let added = 0;
+    for (const userId of selectedOrgIds) {
+      try {
+        const r = await api.post(`/tournaments/${tournament.id}/co-organizers`, { userId });
+        setCoOrgs(prev => [...prev.filter((x: any) => x.userId !== userId), r.data.data]);
+        added++;
+      } catch (e: any) {
+        toast.error(e?.response?.data?.message ?? `Error añadiendo organizador`);
+      }
+    }
+    if (added > 0) toast.success(`${added} co-organizador${added > 1 ? "es" : ""} añadido${added > 1 ? "s" : ""}`);
+    setShowOrgPicker(false);
+    setSelectedOrgIds(new Set());
+    setAddingCoOrgs(false);
+  };
+
+  const handleRemoveCoOrg = async (id: string) => {
+    try {
+      await api.delete(`/tournaments/${tournament.id}/co-organizers/${id}`);
+      setCoOrgs(prev => prev.filter((c: any) => c.id !== id));
+      toast.success("Acceso revocado");
+    } catch { toast.error("Error al revocar acceso"); }
+  };
+
   // when format changes, clear losers config if not double
   const handleFormatChange = (f: string) => {
     setFormat(f as typeof format);
@@ -1306,6 +1370,114 @@ function TournamentSetup({
             allowPlayerReg ? "left-6" : "left-1"
           )} />
         </button>
+      </div>
+
+      {/* ── Co-organizadores ── */}
+      <div className="bg-ink-950 border border-ink-800 rounded-2xl p-5 space-y-4">
+        <div className="flex items-center justify-between gap-3">
+          <h3 className="font-bold text-white text-xs uppercase tracking-wider flex items-center gap-2">
+            <UserPlus className="w-4 h-4 text-emerald-400" />
+            Co-organizadores
+          </h3>
+          {isOwner && !showOrgPicker && (
+            <button
+              onClick={handleOpenPicker}
+              disabled={loadingOrgs}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-emerald-400 border border-emerald-800/60 rounded-lg hover:bg-emerald-900/20 transition-colors disabled:opacity-40"
+            >
+              {loadingOrgs ? "Cargando…" : "Buscar"}
+            </button>
+          )}
+        </div>
+
+        <p className="text-xs text-ink-500">
+          {isOwner
+            ? "Los co-organizadores pueden ver y gestionar este torneo. Solo tú puedes añadirlos o quitarlos."
+            : "Organizadores con acceso a este torneo."}
+        </p>
+
+        {/* Picker de organizadores */}
+        {showOrgPicker && (
+          <div className="space-y-3">
+            <p className="text-xs text-ink-400">Selecciona uno o varios organizadores:</p>
+            <div className="max-h-56 overflow-y-auto space-y-1 rounded-xl border border-ink-700 bg-ink-900 p-2">
+              {allOrganizers
+                .filter((u: any) => u.id !== (tournament as any).createdBy)
+                .map((u: any) => {
+                  const alreadyAdded = coOrgs.some((c: any) => c.userId === u.id);
+                  const checked = selectedOrgIds.has(u.id);
+                  return (
+                    <label
+                      key={u.id}
+                      className={clsx(
+                        "flex items-center gap-3 px-3 py-2 rounded-lg cursor-pointer transition-colors",
+                        alreadyAdded ? "opacity-40 cursor-not-allowed" : "hover:bg-ink-800"
+                      )}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={checked || alreadyAdded}
+                        disabled={alreadyAdded}
+                        onChange={() => !alreadyAdded && toggleOrgSelection(u.id)}
+                        className="accent-emerald-500 w-4 h-4 shrink-0"
+                      />
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-semibold text-white truncate">{u.name}</p>
+                        <p className="text-[11px] text-ink-500 truncate">{u.email}</p>
+                      </div>
+                      {alreadyAdded && <span className="text-[10px] text-emerald-400 shrink-0">Ya añadido</span>}
+                    </label>
+                  );
+                })}
+              {allOrganizers.filter((u: any) => u.id !== (tournament as any).createdBy).length === 0 && (
+                <p className="text-xs text-ink-500 px-3 py-4 text-center">No hay otros organizadores registrados</p>
+              )}
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={handleAddSelected}
+                disabled={addingCoOrgs || selectedOrgIds.size === 0}
+                className="flex-1 py-2 text-sm font-bold text-white bg-emerald-700 hover:bg-emerald-600 rounded-xl transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                {addingCoOrgs ? "Añadiendo…" : `Añadir${selectedOrgIds.size > 0 ? ` (${selectedOrgIds.size})` : ""}`}
+              </button>
+              <button
+                onClick={() => { setShowOrgPicker(false); setSelectedOrgIds(new Set()); }}
+                className="px-4 py-2 text-sm text-ink-400 hover:text-white border border-ink-700 rounded-xl transition-colors"
+              >
+                Cancelar
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Lista actual de co-organizadores */}
+        {coOrgs.length > 0 ? (
+          <div className="space-y-2">
+            {coOrgs.map((c: any) => (
+              <div key={c.id} className="flex items-center gap-3 px-3 py-2 bg-ink-900 rounded-xl border border-ink-700">
+                <div className="w-7 h-7 rounded-lg bg-emerald-900/30 border border-emerald-700/40 flex items-center justify-center shrink-0 text-emerald-400">
+                  <UserPlus className="w-3.5 h-3.5" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold text-white truncate">{c.user?.name ?? "—"}</p>
+                  <p className="text-[11px] text-ink-500 truncate">{c.user?.email}</p>
+                </div>
+                {isOwner && (
+                  <button
+                    onClick={() => handleRemoveCoOrg(c.id)}
+                    className="p-1.5 text-ink-600 hover:text-red-400 transition-colors rounded-lg hover:bg-red-900/10"
+                    title="Revocar acceso"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="text-xs text-ink-600 text-center py-2">Sin co-organizadores asignados</p>
+        )}
       </div>
 
       {/* ── Save button ── */}
@@ -2589,7 +2761,6 @@ export default function TournamentDetailPage({ params }: { params: Promise<{ id:
           onAnnouncerSpeak={onAnnouncerSpeak}
           emitSocket={emitSocket}
           socketConnected={connected}
-          isOwner={!!(user && tournament && (user.role === "admin" || user.id === tournament.createdBy))}
         />
       )}
 
