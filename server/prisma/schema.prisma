@@ -283,6 +283,8 @@ model Match {
   winner       Participant? @relation("MatchWinner", fields: [winnerId], references: [id])
   diana        Diana?
 
+  @@index([tournamentId])
+  @@index([tournamentId, status])
   @@map("matches")
 }
 

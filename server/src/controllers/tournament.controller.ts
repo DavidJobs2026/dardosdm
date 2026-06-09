@@ -333,6 +333,17 @@ export const deleteTournament = async (req: AuthRequest, res: Response, next: Ne
   }
 };
 
+/**
+ * Generate a group label for index i that works beyond 26:
+ *   0→A, 1→B … 25→Z, 26→A2, 27→B2 … 51→Z2, 52→A3 …
+ * Supports up to 260 groups (enough for 2080 players at group size 8).
+ */
+function rrGroupLabel(i: number): string {
+  const letter = String.fromCharCode(65 + (i % 26));
+  const num    = Math.floor(i / 26);
+  return num === 0 ? letter : `${letter}${num + 1}`;
+}
+
 /** Helper: generate RR groups + match data for a slice of participants within one level.
  *  Returns the match rows ready for prisma.match.createMany and the rrGroup assignments. */
 function buildRRGroups(
@@ -368,7 +379,7 @@ function buildRRGroups(
     }
   }
   const groupCount = Math.ceil(ordered.length / rrGroupSize);
-  const groupNames = Array.from({ length: groupCount }, (_, i) => String.fromCharCode(65 + i));
+  const groupNames = Array.from({ length: groupCount }, (_, i) => rrGroupLabel(i));
   const groups     = new Map<string, typeof participants>(groupNames.map(g => [g, []]));
   ordered.forEach((p, i) => groups.get(groupNames[i % groupCount])!.push(p));
 
@@ -525,9 +536,7 @@ export const startTournament = async (req: AuthRequest, res: Response, next: Nex
       }
 
       const groupCount = Math.ceil(participants.length / groupSize);
-      const groupNames = Array.from({ length: groupCount }, (_, i) =>
-        String.fromCharCode(65 + i) // A, B, C...
-      );
+      const groupNames = Array.from({ length: groupCount }, (_, i) => rrGroupLabel(i));
 
       // Balanced round-robin assignment: deal cards to groups in order
       const groups = new Map<string, typeof participants[number][]>(
@@ -566,11 +575,14 @@ export const startTournament = async (req: AuthRequest, res: Response, next: Nex
         prisma.match.createMany({ data: allMatchData }),
       ]);
 
-      for (const [groupName, groupParticipants] of groups.entries()) {
-        for (const p of groupParticipants) {
-          await prisma.participant.update({ where: { id: p.id }, data: { rrGroup: groupName } });
-        }
-      }
+      // Batch-update rrGroup for all participants in one transaction (avoids N×1 round-trips)
+      await prisma.$transaction(
+        [...groups.entries()].flatMap(([groupName, groupParticipants]) =>
+          groupParticipants.map(p =>
+            prisma.participant.update({ where: { id: p.id }, data: { rrGroup: groupName } })
+          )
+        )
+      );
 
       audit({ req, action: "tournament.start", entityType: "tournament", entityId: tournament.id, entityName: tournament.name });
       return res.json({ data: null, message: "Tournament started" });
@@ -585,9 +597,13 @@ export const startTournament = async (req: AuthRequest, res: Response, next: Nex
       prisma.match.createMany({ data: allMatchData }),
     ]);
 
-    // Apply rrGroup assignments for multi-level RR (collected above)
-    for (const { participantId, group } of allRRAssignments) {
-      await prisma.participant.update({ where: { id: participantId }, data: { rrGroup: group } });
+    // Apply rrGroup assignments for multi-level RR — batch in one transaction
+    if (allRRAssignments.length > 0) {
+      await prisma.$transaction(
+        allRRAssignments.map(({ participantId, group }) =>
+          prisma.participant.update({ where: { id: participantId }, data: { rrGroup: group } })
+        )
+      );
     }
 
     // Advance BYE winners into next-round slots for each level (only for non-RR formats)
