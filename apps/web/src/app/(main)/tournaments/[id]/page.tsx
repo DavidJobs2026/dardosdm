@@ -1393,7 +1393,11 @@ export default function TournamentDetailPage({ params }: { params: Promise<{ id:
   const { connected, onMatchUpdated, onTournamentUpdated, onAnnouncerSpeak, emit: emitSocket } = useSocket(id);
   const router = useRouter();
 
-  const isOrganizer = user && tournament && (user.id === tournament.createdBy || user.role === "admin" || user.role === "organizer");
+  const isOrganizer = user && tournament && (
+    user.role === "admin" ||
+    user.id === tournament.createdBy ||
+    ((tournament as any).coOrganizers ?? []).some((c: { userId: string }) => c.userId === user.id)
+  );
 
   // Referee detection — check if the current user is a referee for this tournament
   const [myRefereeData, setMyRefereeData] = useState<any>(null);
@@ -2585,6 +2589,7 @@ export default function TournamentDetailPage({ params }: { params: Promise<{ id:
           onAnnouncerSpeak={onAnnouncerSpeak}
           emitSocket={emitSocket}
           socketConnected={connected}
+          isOwner={!!(user && tournament && (user.role === "admin" || user.id === tournament.createdBy))}
         />
       )}
 

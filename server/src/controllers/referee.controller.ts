@@ -3,14 +3,14 @@ import { z } from "zod";
 import { prisma } from "../lib/prisma";
 import { AuthRequest } from "../middlewares/auth.middleware";
 import { notFound, forbidden, badRequest } from "../utils/errors";
+import { canManageTournament, selectCoOrg } from "../utils/tournament-access";
 
-const isOrganizer = (tournament: { createdById: string }, req: AuthRequest) =>
-  tournament.createdById === req.user!.userId || req.user!.role === "admin";
+const isOrganizer = canManageTournament;
 
 /** GET /tournaments/:id/referees — list referees (organizer/admin) */
 export const listReferees = async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
-    const t = await prisma.tournament.findUnique({ where: { id: req.params.id }, select: { createdById: true } });
+    const t = await prisma.tournament.findUnique({ where: { id: req.params.id }, include: { coOrganizers: { select: selectCoOrg } } });
     if (!t) return next(notFound("Tournament"));
     if (!isOrganizer(t, req)) return next(forbidden());
 
@@ -42,7 +42,7 @@ const addSchema = z.object({
 /** POST /tournaments/:id/referees — add a referee */
 export const addReferee = async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
-    const t = await prisma.tournament.findUnique({ where: { id: req.params.id }, select: { createdById: true } });
+    const t = await prisma.tournament.findUnique({ where: { id: req.params.id }, include: { coOrganizers: { select: selectCoOrg } } });
     if (!t) return next(notFound("Tournament"));
     if (!isOrganizer(t, req)) return next(forbidden());
 
@@ -69,7 +69,7 @@ export const addReferee = async (req: AuthRequest, res: Response, next: NextFunc
 /** DELETE /tournaments/:id/referees/:refereeId — remove a referee */
 export const removeReferee = async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
-    const t = await prisma.tournament.findUnique({ where: { id: req.params.id }, select: { createdById: true } });
+    const t = await prisma.tournament.findUnique({ where: { id: req.params.id }, include: { coOrganizers: { select: selectCoOrg } } });
     if (!t) return next(notFound("Tournament"));
     if (!isOrganizer(t, req)) return next(forbidden());
 

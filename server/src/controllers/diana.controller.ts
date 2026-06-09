@@ -3,6 +3,7 @@ import { z } from "zod";
 import { prisma } from "../lib/prisma";
 import { AuthRequest } from "../middlewares/auth.middleware";
 import { notFound, forbidden, badRequest } from "../utils/errors";
+import { canManageTournament, selectCoOrg } from "../utils/tournament-access";
 import { Server as SocketServer } from "socket.io";
 import { handleBracketAdvancement } from "./match.controller";
 import { sendPushToUser } from "../lib/push";
@@ -62,9 +63,9 @@ export const setupDianas = async (req: AuthRequest, res: Response, next: NextFun
   try {
     const { count } = z.object({ count: z.number().int().min(1).max(500) }).parse(req.body);
 
-    const tournament = await prisma.tournament.findUnique({ where: { id: req.params.id } });
+    const tournament = await prisma.tournament.findUnique({ where: { id: req.params.id }, include: { coOrganizers: { select: selectCoOrg } } });
     if (!tournament) return next(notFound("Tournament"));
-    if (tournament.createdById !== req.user!.userId && req.user!.role !== "admin" && req.user!.role !== "organizer") return next(forbidden());
+    if (!canManageTournament(tournament, req)) return next(forbidden());
 
     // Delete all unoccupied dianas (occupied ones stay to preserve match assignments)
     await prisma.diana.deleteMany({ where: { tournamentId: req.params.id, matchId: null } });
@@ -92,9 +93,9 @@ export const assignDiana = async (req: AuthRequest, res: Response, next: NextFun
   try {
     const { dianaNumber } = z.object({ dianaNumber: z.number().int().min(1) }).parse(req.body);
 
-    const tournament = await prisma.tournament.findUnique({ where: { id: req.params.id } });
+    const tournament = await prisma.tournament.findUnique({ where: { id: req.params.id }, include: { coOrganizers: { select: selectCoOrg } } });
     if (!tournament) return next(notFound("Tournament"));
-    if (tournament.createdById !== req.user!.userId && req.user!.role !== "admin" && req.user!.role !== "organizer") return next(forbidden());
+    if (!canManageTournament(tournament, req)) return next(forbidden());
 
     const diana = await prisma.diana.findUnique({
       where: { tournamentId_number: { tournamentId: req.params.id, number: dianaNumber } },
@@ -134,9 +135,9 @@ export const saveLayout = async (req: AuthRequest, res: Response, next: NextFunc
     });
     const { dianas: updates } = schema.parse(req.body);
 
-    const tournament = await prisma.tournament.findUnique({ where: { id: req.params.id } });
+    const tournament = await prisma.tournament.findUnique({ where: { id: req.params.id }, include: { coOrganizers: { select: selectCoOrg } } });
     if (!tournament) return next(notFound("Tournament"));
-    if (tournament.createdById !== req.user!.userId && req.user!.role !== "admin" && req.user!.role !== "organizer") return next(forbidden());
+    if (!canManageTournament(tournament, req)) return next(forbidden());
 
     await prisma.$transaction(
       updates.map(u =>
@@ -154,9 +155,9 @@ export const saveLayout = async (req: AuthRequest, res: Response, next: NextFunc
 // ─── Unassign diana from match ────────────────────────────────────────────────
 export const unassignDiana = async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
-    const tournament = await prisma.tournament.findUnique({ where: { id: req.params.id } });
+    const tournament = await prisma.tournament.findUnique({ where: { id: req.params.id }, include: { coOrganizers: { select: selectCoOrg } } });
     if (!tournament) return next(notFound("Tournament"));
-    if (tournament.createdById !== req.user!.userId && req.user!.role !== "admin" && req.user!.role !== "organizer") return next(forbidden());
+    if (!canManageTournament(tournament, req)) return next(forbidden());
 
     const matchToUnassign = await prisma.match.findUnique({ where: { id: req.params.matchId } });
     if (!matchToUnassign || matchToUnassign.tournamentId !== req.params.id) return next(notFound("Match"));
@@ -176,9 +177,9 @@ export const unassignDiana = async (req: AuthRequest, res: Response, next: NextF
 // ─── Delete a single diana ────────────────────────────────────────────────────
 export const deleteDiana = async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
-    const tournament = await prisma.tournament.findUnique({ where: { id: req.params.id } });
+    const tournament = await prisma.tournament.findUnique({ where: { id: req.params.id }, include: { coOrganizers: { select: selectCoOrg } } });
     if (!tournament) return next(notFound("Tournament"));
-    if (tournament.createdById !== req.user!.userId && req.user!.role !== "admin" && req.user!.role !== "organizer") return next(forbidden());
+    if (!canManageTournament(tournament, req)) return next(forbidden());
 
     const diana = await prisma.diana.findUnique({ where: { id: req.params.dianaId, tournamentId: req.params.id } });
     if (!diana) return next(notFound("Diana"));
@@ -194,9 +195,9 @@ export const bulkDeleteDianas = async (req: AuthRequest, res: Response, next: Ne
   try {
     const { ids } = z.object({ ids: z.array(z.string()).min(1) }).parse(req.body);
 
-    const tournament = await prisma.tournament.findUnique({ where: { id: req.params.id } });
+    const tournament = await prisma.tournament.findUnique({ where: { id: req.params.id }, include: { coOrganizers: { select: selectCoOrg } } });
     if (!tournament) return next(notFound("Tournament"));
-    if (tournament.createdById !== req.user!.userId && req.user!.role !== "admin" && req.user!.role !== "organizer") return next(forbidden());
+    if (!canManageTournament(tournament, req)) return next(forbidden());
 
     // Only delete dianas that belong to this tournament AND have no active match
     const result = await prisma.diana.deleteMany({
@@ -219,9 +220,9 @@ export const bulkDeleteDianas = async (req: AuthRequest, res: Response, next: Ne
 // ─── Toggle broken flag ────────────────────────────────────────────────────────
 export const toggleBrokenDiana = async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
-    const tournament = await prisma.tournament.findUnique({ where: { id: req.params.id } });
+    const tournament = await prisma.tournament.findUnique({ where: { id: req.params.id }, include: { coOrganizers: { select: selectCoOrg } } });
     if (!tournament) return next(notFound("Tournament"));
-    if (tournament.createdById !== req.user!.userId && req.user!.role !== "admin" && req.user!.role !== "organizer") return next(forbidden());
+    if (!canManageTournament(tournament, req)) return next(forbidden());
 
     const diana = await prisma.diana.findUnique({ where: { id: req.params.dianaId, tournamentId: req.params.id } });
     if (!diana) return next(notFound("Diana"));
@@ -239,9 +240,9 @@ export const toggleBrokenDiana = async (req: AuthRequest, res: Response, next: N
 // ─── Launch match (1st / 2nd / 3rd call) ─────────────────────────────────────
 export const launchMatch = async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
-    const tournament = await prisma.tournament.findUnique({ where: { id: req.params.id } });
+    const tournament = await prisma.tournament.findUnique({ where: { id: req.params.id }, include: { coOrganizers: { select: selectCoOrg } } });
     if (!tournament) return next(notFound("Tournament"));
-    if (tournament.createdById !== req.user!.userId && req.user!.role !== "admin" && req.user!.role !== "organizer") return next(forbidden());
+    if (!canManageTournament(tournament, req)) return next(forbidden());
 
     const match = await prisma.match.findUnique({
       where: { id: req.params.matchId },
@@ -351,13 +352,10 @@ export const recallMatch = async (req: AuthRequest, res: Response, next: NextFun
   try {
     const { callNumber } = z.object({ callNumber: z.number().int().min(1).max(3) }).parse(req.body);
 
-    const tournament = await prisma.tournament.findUnique({ where: { id: req.params.id } });
+    const tournament = await prisma.tournament.findUnique({ where: { id: req.params.id }, include: { coOrganizers: { select: selectCoOrg } } });
     if (!tournament) return next(notFound("Tournament"));
 
-    const isOrganizer =
-      tournament.createdById === req.user!.userId ||
-      req.user!.role === "admin" ||
-      req.user!.role === "organizer";
+    const isOrganizer = canManageTournament(tournament, req);
 
     // Non-organizers must be a registered referee for this tournament
     let refereeRecord: { dianaStart: number | null; dianaEnd: number | null } | null = null;
@@ -472,9 +470,9 @@ export const noShowMatch = (io: SocketServer) =>
         reason: z.string().max(500).optional(),
       }).parse(req.body);
 
-      const tournament = await prisma.tournament.findUnique({ where: { id: req.params.id } });
+      const tournament = await prisma.tournament.findUnique({ where: { id: req.params.id }, include: { coOrganizers: { select: selectCoOrg } } });
       if (!tournament) return next(notFound("Tournament"));
-      if (tournament.createdById !== req.user!.userId && req.user!.role !== "admin" && req.user!.role !== "organizer") return next(forbidden());
+      if (!canManageTournament(tournament, req)) return next(forbidden());
 
       const match = await prisma.match.findUnique({ where: { id: req.params.matchId } });
       if (!match) return next(notFound("Match"));

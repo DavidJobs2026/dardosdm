@@ -16,6 +16,7 @@ import {
 } from "../controllers/participant.controller";
 import { listMatches, getMatch, reportResult, repairBracket, resetMatchResult } from "../controllers/match.controller";
 import { listReferees, getMyReferee, addReferee, removeReferee } from "../controllers/referee.controller";
+import { listCoOrganizers, addCoOrganizer, removeCoOrganizer } from "../controllers/coOrganizer.controller";
 import { listDianas, setupDianas, saveLayout, assignDiana, unassignDiana, deleteDiana, bulkDeleteDianas, toggleBrokenDiana, launchMatch, noShowMatch, recallMatch } from "../controllers/diana.controller";
 import { authenticate, requireRole, optionalAuthenticate } from "../middlewares/auth.middleware";
 import { tournamentImageUpload } from "../middlewares/upload.middleware";
@@ -53,6 +54,11 @@ export default function tournamentRoutes(io: SocketServer): Router {
   router.post("/:id/player-inscribe",              authenticate, playerInscribe);
   router.get("/:id/pending-inscriptions",          authenticate, getPendingInscriptions);
   router.patch("/:id/inscriptions/:participantId", authenticate, resolveInscription);
+
+  // Co-organizers
+  router.get("/:id/co-organizers",                   authenticate, listCoOrganizers);
+  router.post("/:id/co-organizers",                  authenticate, addCoOrganizer);
+  router.delete("/:id/co-organizers/:coOrgId",       authenticate, removeCoOrganizer);
 
   // Referees
   router.get("/:id/referees",               authenticate, listReferees);

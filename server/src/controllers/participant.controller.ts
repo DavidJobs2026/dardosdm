@@ -4,6 +4,7 @@ import { prisma } from "../lib/prisma";
 import { AuthRequest } from "../middlewares/auth.middleware";
 import { notFound, forbidden, badRequest } from "../utils/errors";
 import { audit } from "../lib/audit";
+import { canManageTournament, selectCoOrg } from "../utils/tournament-access";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -35,7 +36,7 @@ const INCLUDE_PARTICIPANT = {
 
 export const listParticipants = async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
-    const tournament = await prisma.tournament.findUnique({ where: { id: req.params.id } });
+    const tournament = await prisma.tournament.findUnique({ where: { id: req.params.id }, include: { coOrganizers: { select: selectCoOrg } } });
     if (!tournament) return next(notFound("Tournament"));
 
     const participants = await prisma.participant.findMany({
@@ -111,15 +112,13 @@ export const addParticipant = async (req: AuthRequest, res: Response, next: Next
   try {
     const tournament = await prisma.tournament.findUnique({
       where: { id: req.params.id },
-      include: { _count: { select: { participants: true } } },
+      include: { _count: { select: { participants: true } }, coOrganizers: { select: selectCoOrg } },
     });
     if (!tournament) return next(notFound("Tournament"));
 
     const { entityId, seed, metricValue, paymentStatus, paymentMethod, level, dni, teamName, provincia } = addSchema.parse(req.body);
 
-    const isOrganizer = tournament.createdById === req.user!.userId
-      || req.user!.role === "admin"
-      || req.user!.role === "organizer";
+    const isOrganizer = canManageTournament(tournament, req);
     const isSelfRegister = entityId === req.user!.userId && isIndividualType(tournament.participantType);
 
     if (!isOrganizer && !isSelfRegister) {
@@ -218,12 +217,11 @@ export const addGroupParticipant = async (req: AuthRequest, res: Response, next:
   try {
     const tournament = await prisma.tournament.findUnique({
       where: { id: req.params.id },
-      include: { _count: { select: { participants: true } }, levels: true },
+      include: { _count: { select: { participants: true } }, levels: true, coOrganizers: { select: selectCoOrg } },
     });
     if (!tournament) return next(notFound("Tournament"));
 
-    const isOrganizer = tournament.createdById === req.user!.userId || req.user!.role === "admin" || req.user!.role === "organizer";
-    if (!isOrganizer) return next(forbidden("Solo el organizador puede inscribir grupos"));
+    if (!canManageTournament(tournament, req)) return next(forbidden("Solo el organizador puede inscribir grupos"));
     if (tournament.status !== "registration") {
       return next(badRequest("El torneo ya está en curso o finalizado"));
     }
@@ -364,11 +362,10 @@ export const addGroupParticipant = async (req: AuthRequest, res: Response, next:
 
 export const blindPair = async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
-    const tournament = await prisma.tournament.findUnique({ where: { id: req.params.id } });
+    const tournament = await prisma.tournament.findUnique({ where: { id: req.params.id }, include: { coOrganizers: { select: selectCoOrg } } });
     if (!tournament) return next(notFound("Tournament"));
 
-    const isOrganizer = tournament.createdById === req.user!.userId || req.user!.role === "admin" || req.user!.role === "organizer";
-    if (!isOrganizer) return next(forbidden());
+    if (!canManageTournament(tournament, req)) return next(forbidden());
     if (tournament.participantType !== "parejas_ciegas") {
       return next(badRequest("El torneo no es de tipo Parejas Ciegas"));
     }
@@ -438,9 +435,9 @@ export const blindPair = async (req: AuthRequest, res: Response, next: NextFunct
 
 export const removeParticipant = async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
-    const tournament = await prisma.tournament.findUnique({ where: { id: req.params.id } });
+    const tournament = await prisma.tournament.findUnique({ where: { id: req.params.id }, include: { coOrganizers: { select: selectCoOrg } } });
     if (!tournament) return next(notFound("Tournament"));
-    if (tournament.createdById !== req.user!.userId && req.user!.role !== "admin" && req.user!.role !== "organizer") {
+    if (!canManageTournament(tournament, req)) {
       return next(forbidden());
     }
     if (tournament.status === "in_progress" || tournament.status === "completed") {
@@ -473,9 +470,9 @@ export const removeParticipant = async (req: AuthRequest, res: Response, next: N
 
 export const randomizeSeeds = async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
-    const tournament = await prisma.tournament.findUnique({ where: { id: req.params.id } });
+    const tournament = await prisma.tournament.findUnique({ where: { id: req.params.id }, include: { coOrganizers: { select: selectCoOrg } } });
     if (!tournament) return next(notFound("Tournament"));
-    if (tournament.createdById !== req.user!.userId && req.user!.role !== "admin" && req.user!.role !== "organizer") {
+    if (!canManageTournament(tournament, req)) {
       return next(forbidden());
     }
 
@@ -508,9 +505,9 @@ export const updatePayment = async (req: AuthRequest, res: Response, next: NextF
       paymentMethod: z.enum(["cash", "card"]).nullable().optional(),
     }).parse(req.body);
 
-    const tournament = await prisma.tournament.findUnique({ where: { id: req.params.id } });
+    const tournament = await prisma.tournament.findUnique({ where: { id: req.params.id }, include: { coOrganizers: { select: selectCoOrg } } });
     if (!tournament) return next(notFound("Tournament"));
-    if (tournament.createdById !== req.user!.userId && req.user!.role !== "admin" && req.user!.role !== "organizer") {
+    if (!canManageTournament(tournament, req)) {
       return next(forbidden());
     }
 
@@ -534,9 +531,9 @@ export const updateMetric = async (req: AuthRequest, res: Response, next: NextFu
       metricValue: z.number().nonnegative().nullable(),
     }).parse(req.body);
 
-    const tournament = await prisma.tournament.findUnique({ where: { id: req.params.id } });
+    const tournament = await prisma.tournament.findUnique({ where: { id: req.params.id }, include: { coOrganizers: { select: selectCoOrg } } });
     if (!tournament) return next(notFound("Tournament"));
-    if (tournament.createdById !== req.user!.userId && req.user!.role !== "admin" && req.user!.role !== "organizer") {
+    if (!canManageTournament(tournament, req)) {
       return next(forbidden());
     }
     if (tournament.status === "in_progress" || tournament.status === "completed") {
@@ -559,9 +556,9 @@ export const updateMetric = async (req: AuthRequest, res: Response, next: NextFu
 export const updateSeed = async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const { seed } = z.object({ seed: z.number().int().positive() }).parse(req.body);
-    const tournament = await prisma.tournament.findUnique({ where: { id: req.params.id } });
+    const tournament = await prisma.tournament.findUnique({ where: { id: req.params.id }, include: { coOrganizers: { select: selectCoOrg } } });
     if (!tournament) return next(notFound("Tournament"));
-    if (tournament.createdById !== req.user!.userId && req.user!.role !== "admin" && req.user!.role !== "organizer") {
+    if (!canManageTournament(tournament, req)) {
       return next(forbidden());
     }
     const participant = await prisma.participant.update({

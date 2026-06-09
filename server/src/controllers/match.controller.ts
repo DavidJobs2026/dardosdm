@@ -6,6 +6,7 @@ import { notFound, forbidden, badRequest } from "../utils/errors";
 import { Server as SocketServer } from "socket.io";
 import { audit } from "../lib/audit";
 import { sendPushToUser } from "../lib/push";
+import { canManageTournament, selectCoOrg } from "../utils/tournament-access";
 
 const scoreSchema = z.object({
   score1: z.number().int().min(0),
@@ -93,7 +94,7 @@ export const reportResult = (io: SocketServer) => async (req: AuthRequest, res: 
   try {
     const match = await prisma.match.findUnique({
       where: { id: req.params.matchId },
-      include: { tournament: { include: { levels: true } } },
+      include: { tournament: { include: { levels: true, coOrganizers: { select: selectCoOrg } } } },
     });
     if (!match) return next(notFound("Match"));
     if (match.status === "bye") {
@@ -117,10 +118,7 @@ export const reportResult = (io: SocketServer) => async (req: AuthRequest, res: 
     }
 
     const tournament = match.tournament;
-    const isOrganizer =
-      tournament.createdById === req.user!.userId ||
-      req.user!.role === "admin" ||
-      req.user!.role === "organizer";
+    const isOrganizer = canManageTournament(tournament, req);
 
     if (!isOrganizer) {
       // Also allow referees assigned to this tournament whose diana range covers this match
@@ -730,9 +728,9 @@ export async function handleBracketAdvancement(
 
 export const repairBracket = async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
-    const tournament = await prisma.tournament.findUnique({ where: { id: req.params.id } });
+    const tournament = await prisma.tournament.findUnique({ where: { id: req.params.id }, include: { coOrganizers: { select: selectCoOrg } } });
     if (!tournament) return next(notFound("Tournament"));
-    if (tournament.createdById !== req.user!.userId && req.user!.role !== "admin" && req.user!.role !== "organizer") {
+    if (!canManageTournament(tournament, req)) {
       return next(forbidden("Only the organizer can repair the bracket"));
     }
 
@@ -778,9 +776,9 @@ export const resetMatchResult = async (req: AuthRequest, res: Response, next: Ne
     if (!match) return next(notFound("Match"));
     if (match.tournamentId !== req.params.id) return next(notFound("Match"));
 
-    const tournament = await prisma.tournament.findUnique({ where: { id: req.params.id } });
+    const tournament = await prisma.tournament.findUnique({ where: { id: req.params.id }, include: { coOrganizers: { select: selectCoOrg } } });
     if (!tournament) return next(notFound("Tournament"));
-    if (tournament.createdById !== req.user!.userId && req.user!.role !== "admin" && req.user!.role !== "organizer") {
+    if (!canManageTournament(tournament, req)) {
       return next(forbidden());
     }
     if (match.status !== "completed") {

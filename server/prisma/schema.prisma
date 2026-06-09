@@ -87,6 +87,7 @@ model User {
   pushSubscriptions    PushSubscription[]
   auditLogs            AuditLog[]
   refereeAssignments   TournamentReferee[]
+  coOrganizerAccess    TournamentCoOrganizer[]
 
   @@map("users")
 }
@@ -167,13 +168,14 @@ model Tournament {
   createdAt       DateTime         @default(now()) @map("created_at")
   updatedAt       DateTime         @updatedAt @map("updated_at")
 
-  organizer    User               @relation("OrganizerTournaments", fields: [createdById], references: [id])
-  participants Participant[]
-  matches      Match[]
-  chatMessages ChatMessage[]
-  levels       TournamentLevel[]
-  dianas       Diana[]
-  referees     TournamentReferee[]
+  organizer      User               @relation("OrganizerTournaments", fields: [createdById], references: [id])
+  participants   Participant[]
+  matches        Match[]
+  chatMessages   ChatMessage[]
+  levels         TournamentLevel[]
+  dianas         Diana[]
+  referees       TournamentReferee[]
+  coOrganizers   TournamentCoOrganizer[]
 
   @@map("tournaments")
 }
@@ -210,6 +212,20 @@ model TournamentReferee {
 
   @@unique([tournamentId, userId])
   @@map("tournament_referees")
+}
+
+// ─── Co-organizer access grants ───────────────────────────────────────────────
+model TournamentCoOrganizer {
+  id           String     @id @default(cuid())
+  tournamentId String     @map("tournament_id")
+  userId       String     @map("user_id")
+  grantedAt    DateTime   @default(now()) @map("granted_at")
+
+  tournament   Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  user         User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([tournamentId, userId])
+  @@map("tournament_co_organizers")
 }
 
 model Participant {

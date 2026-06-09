@@ -5,6 +5,7 @@ import path from "path";
 import { prisma } from "../lib/prisma";
 import { AuthRequest } from "../middlewares/auth.middleware";
 import { notFound, forbidden, badRequest } from "../utils/errors";
+import { canManageTournament, selectCoOrg as selectCoOrgHelper } from "../utils/tournament-access";
 import { generateBracket, generateRoundRobin, generateSingleElimination, computeRRStandings } from "../services/bracket.service";
 import { sendInscriptionPending, sendInscriptionApproved } from "../lib/email";
 import { audit } from "../lib/audit";
@@ -65,6 +66,12 @@ const updateSchema = createSchema.partial();
 
 const selectOrganizer = { id: true, name: true, avatarUrl: true };
 
+/** Co-organizer select shape — used in includes */
+const selectCoOrg = selectCoOrgHelper;
+
+/** Alias for readability inside this file */
+const canManage = canManageTournament;
+
 // ─── Controllers ──────────────────────────────────────────────────────────────
 
 export const listTournaments = async (req: AuthRequest, res: Response, next: NextFunction) => {
@@ -78,42 +85,48 @@ export const listTournaments = async (req: AuthRequest, res: Response, next: Nex
     const VALID_STATUSES = ["draft", "registration", "in_progress", "completed", "cancelled"];
     const VALID_FORMATS  = ["single_elimination", "double_elimination", "round_robin"];
 
-    // Only organizers and admins see everything; everyone else (players + unauthenticated) sees only public
-    // VULN-022 fix: unauthenticated requests had req.user===undefined → isPlayer was false → all tournaments visible
-    const isPrivileged = req.user?.role === "organizer" || req.user?.role === "admin";
-    const isPlayer = !isPrivileged; // treat unauthenticated as "player" for filtering
+    const role    = req.user?.role;
+    const userId  = req.user?.userId;
+    const isAdmin = role === "admin";
+    const isOrg   = role === "organizer";
+    // players and unauthenticated only see public tournaments
+    const isPlayer = !isAdmin && !isOrg;
 
-    const buildWhere = (withPublic: boolean) => ({
-      ...(withPublic && isPlayer ? { isPublic: true } : {}),
-      ...(rawStatus && VALID_STATUSES.includes(rawStatus) ? { status: rawStatus as any } : {}),
-      ...(rawFormat && VALID_FORMATS.includes(rawFormat)  ? { format: rawFormat as any } : {}),
-    });
+    const statusFilter = rawStatus && VALID_STATUSES.includes(rawStatus) ? { status: rawStatus as any } : {};
+    const formatFilter = rawFormat && VALID_FORMATS.includes(rawFormat)  ? { format: rawFormat as any } : {};
 
-    const runQuery = async (withPublic: boolean) => {
-      const where = buildWhere(withPublic);
-      return Promise.all([
-        prisma.tournament.findMany({
-          where,
-          skip,
-          take: limit,
-          orderBy: { createdAt: "desc" },
-          include: {
-            organizer: { select: selectOrganizer },
-            _count: { select: { participants: true } },
-          },
-        }),
-        prisma.tournament.count({ where }),
-      ]);
-    };
-
-    let tournaments: any[];
-    let total: number;
-
-    try {
-      [tournaments, total] = await runQuery(true);
-    } catch (colErr: any) {
-      throw colErr;
+    // ── Visibility scope ──────────────────────────────────────────────────────
+    // admin        → all tournaments
+    // organizer    → own tournaments + granted co-organizer access
+    // player/anon  → public only
+    let visibilityFilter: any = {};
+    if (isPlayer) {
+      visibilityFilter = { isPublic: true };
+    } else if (isOrg && !isAdmin) {
+      visibilityFilter = {
+        OR: [
+          { createdById: userId },
+          { coOrganizers: { some: { userId } } },
+        ],
+      };
     }
+    // isAdmin → no filter (sees everything)
+
+    const where = { ...visibilityFilter, ...statusFilter, ...formatFilter };
+
+    const [tournaments, total] = await Promise.all([
+      prisma.tournament.findMany({
+        where,
+        skip,
+        take: limit,
+        orderBy: { createdAt: "desc" },
+        include: {
+          organizer: { select: selectOrganizer },
+          _count: { select: { participants: true } },
+        },
+      }),
+      prisma.tournament.count({ where }),
+    ]);
 
     const data = tournaments.map((t: any) => ({
       ...t,
@@ -133,18 +146,21 @@ export const getTournament = async (req: AuthRequest, res: Response, next: NextF
     const tournament = await prisma.tournament.findUnique({
       where: { id: req.params.id },
       include: {
-        organizer: { select: selectOrganizer },
-        _count:    { select: { participants: true } },
-        levels:    { orderBy: { order: "asc" } },
+        organizer:    { select: selectOrganizer },
+        coOrganizers: { select: selectCoOrg },
+        _count:       { select: { participants: true } },
+        levels:       { orderBy: { order: "asc" } },
       },
     });
     if (!tournament) return next(notFound("Tournament"));
 
-    // Non-organizer / unauthenticated users can only see published tournaments.
-    // BUG-3 fix: use !== true instead of === false so that NULL isPublic
-    // (rows that pre-date the column) is treated as private, not public.
-    const isPrivileged = req.user?.role === "organizer" || req.user?.role === "admin";
-    if (!isPrivileged && tournament.isPublic !== true) {
+    // Access rules:
+    //  - admin          → always allowed
+    //  - owner          → always allowed
+    //  - co-organizer   → always allowed
+    //  - player / anon  → only public tournaments
+    const privileged = canManage(tournament, req);
+    if (!privileged && tournament.isPublic !== true) {
       return next(notFound("Tournament"));
     }
 
@@ -248,9 +264,9 @@ async function reassignParticipantMetrics(
 
 export const updateTournament = async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
-    const tournament = await prisma.tournament.findUnique({ where: { id: req.params.id } });
+    const tournament = await prisma.tournament.findUnique({ where: { id: req.params.id }, include: { coOrganizers: { select: selectCoOrg } } });
     if (!tournament) return next(notFound("Tournament"));
-    if (tournament.createdById !== req.user!.userId && req.user!.role !== "admin") {
+    if (!canManage(tournament, req)) {
       return next(forbidden());
     }
     if (tournament.status === "in_progress" || tournament.status === "completed") {
@@ -299,10 +315,10 @@ export const recalculateMetrics = async (req: AuthRequest, res: Response, next: 
   try {
     const tournament = await prisma.tournament.findUnique({
       where: { id: req.params.id },
-      include: { levels: { orderBy: { order: "asc" } } },
+      include: { levels: { orderBy: { order: "asc" } }, coOrganizers: { select: selectCoOrg } },
     });
     if (!tournament) return next(notFound("Tournament"));
-    if (tournament.createdById !== req.user!.userId && req.user!.role !== "admin") {
+    if (!canManage(tournament, req)) {
       return next(forbidden());
     }
     if (!tournament.metric) {
@@ -320,9 +336,9 @@ export const recalculateMetrics = async (req: AuthRequest, res: Response, next: 
 
 export const deleteTournament = async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
-    const tournament = await prisma.tournament.findUnique({ where: { id: req.params.id } });
+    const tournament = await prisma.tournament.findUnique({ where: { id: req.params.id }, include: { coOrganizers: { select: selectCoOrg } } });
     if (!tournament) return next(notFound("Tournament"));
-    if (tournament.createdById !== req.user!.userId && req.user!.role !== "admin") {
+    if (!canManage(tournament, req)) {
       return next(forbidden());
     }
     audit({ req, action: "tournament.delete", entityType: "tournament", entityId: tournament.id, entityName: tournament.name });
@@ -465,10 +481,11 @@ export const startTournament = async (req: AuthRequest, res: Response, next: Nex
       include: {
         participants: true,
         levels: { orderBy: { order: "asc" } },
+        coOrganizers: { select: selectCoOrg },
       },
     });
     if (!tournament) return next(notFound("Tournament"));
-    if (tournament.createdById !== req.user!.userId && req.user!.role !== "admin") {
+    if (!canManage(tournament, req)) {
       return next(forbidden());
     }
     if (tournament.status !== "registration") {
@@ -646,10 +663,10 @@ export const startLevel = async (req: AuthRequest, res: Response, next: NextFunc
 
     const tournament = await prisma.tournament.findUnique({
       where: { id: req.params.id },
-      include: { participants: true, levels: { orderBy: { order: "asc" } } },
+      include: { participants: true, levels: { orderBy: { order: "asc" } }, coOrganizers: { select: selectCoOrg } },
     });
     if (!tournament) return next(notFound("Tournament"));
-    if (tournament.createdById !== req.user!.userId && req.user!.role !== "admin") {
+    if (!canManage(tournament, req)) {
       return next(forbidden());
     }
     if (tournament.status !== "registration") {
@@ -727,10 +744,10 @@ export const finalizeTournament = async (req: AuthRequest, res: Response, next: 
   try {
     const tournament = await prisma.tournament.findUnique({
       where: { id: req.params.id },
-      include: { matches: true },
+      include: { matches: true, coOrganizers: { select: selectCoOrg } },
     });
     if (!tournament) return next(notFound("Tournament"));
-    if (tournament.createdById !== req.user!.userId && req.user!.role !== "admin") {
+    if (!canManage(tournament, req)) {
       return next(forbidden());
     }
     if (tournament.status !== "in_progress") {
@@ -758,9 +775,9 @@ export const finalizeTournament = async (req: AuthRequest, res: Response, next: 
 
 export const resetTournament = async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
-    const tournament = await prisma.tournament.findUnique({ where: { id: req.params.id } });
+    const tournament = await prisma.tournament.findUnique({ where: { id: req.params.id }, include: { coOrganizers: { select: selectCoOrg } } });
     if (!tournament) return next(notFound("Tournament"));
-    if (tournament.createdById !== req.user!.userId && req.user!.role !== "admin") {
+    if (!canManage(tournament, req)) {
       return next(forbidden());
     }
     if (tournament.status !== "in_progress" && tournament.status !== "registration") {
@@ -795,10 +812,11 @@ export const resetLevel = async (req: AuthRequest, res: Response, next: NextFunc
       include: {
         participants: true,
         levels: { orderBy: { order: "asc" } },
+        coOrganizers: { select: selectCoOrg },
       },
     });
     if (!tournament) return next(notFound("Tournament"));
-    if (tournament.createdById !== req.user!.userId && req.user!.role !== "admin") {
+    if (!canManage(tournament, req)) {
       return next(forbidden());
     }
 
@@ -879,9 +897,9 @@ export const resetLevel = async (req: AuthRequest, res: Response, next: NextFunc
 
 export const openRegistration = async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
-    const tournament = await prisma.tournament.findUnique({ where: { id: req.params.id } });
+    const tournament = await prisma.tournament.findUnique({ where: { id: req.params.id }, include: { coOrganizers: { select: selectCoOrg } } });
     if (!tournament) return next(notFound("Tournament"));
-    if (tournament.createdById !== req.user!.userId && req.user!.role !== "admin") {
+    if (!canManage(tournament, req)) {
       return next(forbidden());
     }
     if (tournament.status !== "draft") {
@@ -902,7 +920,7 @@ export const openRegistration = async (req: AuthRequest, res: Response, next: Ne
  *  Optional query param: ?level=NivelX  — filter to a specific bracketLevel */
 export const getRRStandings = async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
-    const tournament = await prisma.tournament.findUnique({ where: { id: req.params.id } });
+    const tournament = await prisma.tournament.findUnique({ where: { id: req.params.id }, include: { coOrganizers: { select: selectCoOrg } } });
     if (!tournament) return next(notFound("Tournament"));
 
     const advancingCount = tournament.rrAdvancingTeams ?? 2;
@@ -983,9 +1001,9 @@ export const approveGroup = async (req: AuthRequest, res: Response, next: NextFu
       bracketLevel: z.string().min(1).nullable().optional(),
     }).parse(req.body);
 
-    const tournament = await prisma.tournament.findUnique({ where: { id: req.params.id } });
+    const tournament = await prisma.tournament.findUnique({ where: { id: req.params.id }, include: { coOrganizers: { select: selectCoOrg } } });
     if (!tournament) return next(notFound("Tournament"));
-    if (tournament.createdById !== req.user!.userId && req.user!.role !== "admin") {
+    if (!canManage(tournament, req)) {
       return next(forbidden());
     }
 
@@ -1015,9 +1033,9 @@ export const resetKO = async (req: AuthRequest, res: Response, next: NextFunctio
       bracketLevel: z.string().min(1).nullable().optional(),
     }).parse(req.body ?? {});
 
-    const tournament = await prisma.tournament.findUnique({ where: { id: req.params.id } });
+    const tournament = await prisma.tournament.findUnique({ where: { id: req.params.id }, include: { coOrganizers: { select: selectCoOrg } } });
     if (!tournament) return next(notFound("Tournament"));
-    if (tournament.createdById !== req.user!.userId && req.user!.role !== "admin") {
+    if (!canManage(tournament, req)) {
       return next(forbidden());
     }
 
@@ -1042,9 +1060,9 @@ export const launchKO = async (req: AuthRequest, res: Response, next: NextFuncti
       bracketLevel: z.string().min(1).nullable().optional(),
     }).parse(req.body ?? {});
 
-    const tournament = await prisma.tournament.findUnique({ where: { id: req.params.id } });
+    const tournament = await prisma.tournament.findUnique({ where: { id: req.params.id }, include: { coOrganizers: { select: selectCoOrg } } });
     if (!tournament) return next(notFound("Tournament"));
-    if (tournament.createdById !== req.user!.userId && req.user!.role !== "admin") {
+    if (!canManage(tournament, req)) {
       return next(forbidden());
     }
 
@@ -1166,9 +1184,9 @@ export const createTiebreakerMatch = async (req: AuthRequest, res: Response, nex
       bracketLevel:   z.string().min(1).nullable().optional(),
     }).parse(req.body);
 
-    const tournament = await prisma.tournament.findUnique({ where: { id: req.params.id } });
+    const tournament = await prisma.tournament.findUnique({ where: { id: req.params.id }, include: { coOrganizers: { select: selectCoOrg } } });
     if (!tournament) return next(notFound("Tournament"));
-    if (tournament.createdById !== req.user!.userId && req.user!.role !== "admin") {
+    if (!canManage(tournament, req)) {
       return next(forbidden());
     }
 
@@ -1255,9 +1273,9 @@ export const reportTiebreakerResult = async (req: AuthRequest, res: Response, ne
       return next(badRequest("Los participantes no corresponden a este partido"));
     }
 
-    const tournament = await prisma.tournament.findUnique({ where: { id: req.params.id } });
+    const tournament = await prisma.tournament.findUnique({ where: { id: req.params.id }, include: { coOrganizers: { select: selectCoOrg } } });
     if (!tournament) return next(notFound("Tournament"));
-    if (tournament.createdById !== req.user!.userId && req.user!.role !== "admin") {
+    if (!canManage(tournament, req)) {
       return next(forbidden());
     }
 
@@ -1293,9 +1311,9 @@ export const unapproveGroup = async (req: AuthRequest, res: Response, next: Next
       bracketLevel: z.string().min(1).nullable().optional(),
     }).parse(req.body);
 
-    const tournament = await prisma.tournament.findUnique({ where: { id: req.params.id } });
+    const tournament = await prisma.tournament.findUnique({ where: { id: req.params.id }, include: { coOrganizers: { select: selectCoOrg } } });
     if (!tournament) return next(notFound("Tournament"));
-    if (tournament.createdById !== req.user!.userId && req.user!.role !== "admin") {
+    if (!canManage(tournament, req)) {
       return next(forbidden());
     }
 
@@ -1319,9 +1337,9 @@ export const resetRRGroup = async (req: AuthRequest, res: Response, next: NextFu
       bracketLevel: z.string().min(1).nullable().optional(),
     }).parse(req.body);
 
-    const tournament = await prisma.tournament.findUnique({ where: { id: req.params.id } });
+    const tournament = await prisma.tournament.findUnique({ where: { id: req.params.id }, include: { coOrganizers: { select: selectCoOrg } } });
     if (!tournament) return next(notFound("Tournament"));
-    if (tournament.createdById !== req.user!.userId && req.user!.role !== "admin") {
+    if (!canManage(tournament, req)) {
       return next(forbidden());
     }
     if (tournament.format !== "round_robin") {
@@ -1380,9 +1398,9 @@ function safeUnlink(imageUrl: string) {
 
 export const uploadTournamentImage = async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
-    const tournament = await prisma.tournament.findUnique({ where: { id: req.params.id } });
+    const tournament = await prisma.tournament.findUnique({ where: { id: req.params.id }, include: { coOrganizers: { select: selectCoOrg } } });
     if (!tournament) return next(notFound("Torneo"));
-    if (tournament.createdById !== req.user!.userId && req.user!.role !== "admin") return next(forbidden());
+    if (!canManage(tournament, req)) return next(forbidden());
 
     const file = req.file as Express.Multer.File | undefined;
     if (!file) return next(badRequest("No se ha proporcionado ninguna imagen"));
@@ -1525,11 +1543,11 @@ export const getPendingInscriptions = async (req: AuthRequest, res: Response, ne
 
     const tournament = await prisma.tournament.findUnique({
       where: { id: req.params.id },
-      select: { metric: true, gameType: true, createdById: true, preferredSeason: true },
+      select: { metric: true, gameType: true, createdById: true, preferredSeason: true, coOrganizers: { select: selectCoOrg } },
     });
     if (!tournament) return next(notFound("Tournament"));
     // Only the tournament's organizer (or an admin) can view its pending inscriptions
-    if (req.user!.role !== "admin" && tournament.createdById !== req.user!.userId) {
+    if (!canManage(tournament, req)) {
       return next(forbidden());
     }
 
@@ -1596,10 +1614,10 @@ export const resolveInscription = async (req: AuthRequest, res: Response, next: 
     // Verify ownership before approving/rejecting
     const tournament = await prisma.tournament.findUnique({
       where: { id: req.params.id },
-      select: { createdById: true },
+      select: { createdById: true, coOrganizers: { select: selectCoOrg } },
     });
     if (!tournament) return next(notFound("Tournament"));
-    if (req.user!.role !== "admin" && tournament.createdById !== req.user!.userId) {
+    if (!canManage(tournament, req)) {
       return next(forbidden());
     }
 
@@ -1651,9 +1669,9 @@ export const resolveInscription = async (req: AuthRequest, res: Response, next: 
 // ─── Remove tournament image ───────────────────────────────────────────────────
 export const removeTournamentImage = async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
-    const tournament = await prisma.tournament.findUnique({ where: { id: req.params.id } });
+    const tournament = await prisma.tournament.findUnique({ where: { id: req.params.id }, include: { coOrganizers: { select: selectCoOrg } } });
     if (!tournament) return next(notFound("Torneo"));
-    if (tournament.createdById !== req.user!.userId && req.user!.role !== "admin") return next(forbidden());
+    if (!canManage(tournament, req)) return next(forbidden());
 
     if (tournament.imageUrl) {
       safeUnlink(tournament.imageUrl);
