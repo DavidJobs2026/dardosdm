@@ -1523,7 +1523,8 @@ export default function DashboardPage() {
   const [showRoleMenu,   setShowRoleMenu]   = useState(false);
   const [showUserMgmt,   setShowUserMgmt]   = useState(false);
   const [showPlayerMgmt, setShowPlayerMgmt] = useState(false);
-  const [showAuditLog,   setShowAuditLog]   = useState(false);
+  const [showAuditLog,      setShowAuditLog]      = useState(false);
+  const [downloadingBackup, setDownloadingBackup] = useState(false);
   const roleMenuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -1549,8 +1550,6 @@ export default function DashboardPage() {
   if (!user || user.role === "player") return null;
 
   const isAdmin = user.role === "admin";
-
-  const [downloadingBackup, setDownloadingBackup] = useState(false);
 
   const handleDownloadBackup = async () => {
     setDownloadingBackup(true);
