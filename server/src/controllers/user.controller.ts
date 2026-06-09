@@ -561,6 +561,15 @@ export const getAuditLogs = async (req: AuthRequest, res: Response, next: NextFu
   } catch (err) { next(err); }
 };
 
+/** DELETE /users/audit-logs — wipe all audit log entries (admin only) */
+export const clearAuditLogs = async (req: AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    if (req.user!.role !== "admin") return next(forbidden());
+    const { count } = await prisma.auditLog.deleteMany({});
+    return res.json({ message: `${count} registros eliminados` });
+  } catch (err) { next(err); }
+};
+
 /** DELETE /users/:id — delete user (admin + organizer, but organizer → players only) */
 export const deleteUser = async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {

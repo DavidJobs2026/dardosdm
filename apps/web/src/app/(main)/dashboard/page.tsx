@@ -1385,11 +1385,12 @@ interface AuditEntry {
 }
 
 function AuditLogPanel() {
-  const [logs,    setLogs]    = useState<AuditEntry[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [page,    setPage]    = useState(1);
-  const [total,   setTotal]   = useState(0);
-  const [filter,  setFilter]  = useState("");
+  const [logs,      setLogs]      = useState<AuditEntry[]>([]);
+  const [loading,   setLoading]   = useState(true);
+  const [clearing,  setClearing]  = useState(false);
+  const [page,      setPage]      = useState(1);
+  const [total,     setTotal]     = useState(0);
+  const [filter,    setFilter]    = useState("");
   const LIMIT = 25;
 
   const load = (p: number, q: string) => {
@@ -1418,6 +1419,21 @@ function AuditLogPanel() {
     load(p, filter);
   };
 
+  const handleClearLogs = () => {
+    if (!window.confirm("¿Borrar todo el registro de actividad? Esta acción no se puede deshacer.")) return;
+    setClearing(true);
+    api.delete("/users/audit-logs")
+      .then(({ data }) => {
+        toast.success(data.message ?? "Registro limpiado");
+        setLogs([]);
+        setTotal(0);
+        setPage(1);
+        setFilter("");
+      })
+      .catch(() => toast.error("Error al limpiar el registro"))
+      .finally(() => setClearing(false));
+  };
+
   const totalPages = Math.ceil(total / LIMIT);
 
   const fmt = (iso: string) => {
@@ -1427,7 +1443,7 @@ function AuditLogPanel() {
 
   return (
     <div className="space-y-4">
-      {/* Filters */}
+      {/* Filters + clear action */}
       <div className="flex gap-2 flex-wrap">
         <select
           value={filter}
@@ -1439,9 +1455,17 @@ function AuditLogPanel() {
             <option key={k} value={k}>{v}</option>
           ))}
         </select>
-        <button onClick={() => handleFilterChange("")}
-          className="px-3 py-2 text-xs text-ink-400 hover:text-white border border-ink-700 rounded-lg hover:bg-ink-800 transition-colors">
-          Limpiar
+        {filter && (
+          <button onClick={() => handleFilterChange("")}
+            className="px-3 py-2 text-xs text-ink-400 hover:text-white border border-ink-700 rounded-lg hover:bg-ink-800 transition-colors">
+            ✕ Filtro
+          </button>
+        )}
+        <button
+          onClick={handleClearLogs}
+          disabled={clearing || total === 0}
+          className="px-3 py-2 text-xs text-red-400 hover:text-white border border-red-800/60 rounded-lg hover:bg-red-900/40 transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
+          {clearing ? "Borrando…" : "Limpiar"}
         </button>
       </div>
 
