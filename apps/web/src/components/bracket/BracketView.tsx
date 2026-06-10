@@ -111,18 +111,20 @@ function computeRouting(
           ]);
         }
       } else {
-        // LB R2, R4, R6…: LB prev-round winner (pos mi) + WB drop-in loser (cross-seeded)
+        // LB R2, R4, R6…: LB prev-round winner (pos mi) + WB drop-in loser
         // LB R(2k) drops from WB R(k+1) → wbRegular index k
-        // groupSize = number of LB matches at this round (mirrors the server logic):
-        //   8-player  LB R2 = 2 matches → pos 0↔1
-        //  16-player  LB R2 = 4 matches → pos 0↔3, 1↔2
-        //   WB Final → LB Final = 1 match → no cross-seeding
+        //
+        // Cross-seeding mirrors the server parity rule:
+        //   k odd  → WB round (k+1) is even → REVERSE position (avoids LBR1 same-region rematch)
+        //   k even → WB round (k+1) is odd  → SAME position (another reversal would undo the first)
+        // This matches LBR2 (k=1, reverse), LBR4 (k=2, same), LBR6 (k=3, reverse), etc.
         const k            = r / 2;
         const wbDropRound  = wbRegular[k]; // WB R(k+1)
         const prevLB       = lbRounds[li - 1];
         const lbSrc        = prevLB?.matches[mi];
         const groupSize    = lbRounds[li].matches.length;
-        const wbPos        = groupSize > 1
+        const crossSeed    = k % 2 === 1 && groupSize > 1;
+        const wbPos        = crossSeed
           ? (Math.floor(mi / groupSize) * groupSize) + (groupSize - 1 - (mi % groupSize))
           : mi;
         const wbSrc        = wbDropRound?.matches[wbPos];
