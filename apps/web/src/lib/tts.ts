@@ -70,6 +70,7 @@ const _ACCENT_MAP: Record<string, string> = {
   banuelos:    "Bañuelos",
   barajas:     "Barajas",
   barba:       "Barba",
+  barberan:    "Barberán",
   barbero:     "Barbero",
   barragan:    "Barragán",
   barranco:    "Barranco",
