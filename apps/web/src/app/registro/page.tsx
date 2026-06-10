@@ -9,6 +9,30 @@ import { clsx } from "clsx";
 import { api } from "@/lib/api";
 import { useAuthStore } from "@/store/auth.store";
 
+// ─── Country codes ────────────────────────────────────────────────────────────
+const COUNTRY_CODES = [
+  { code: "+34",  flag: "🇪🇸", name: "España" },
+  { code: "+351", flag: "🇵🇹", name: "Portugal" },
+  { code: "+44",  flag: "🇬🇧", name: "Reino Unido" },
+  { code: "+33",  flag: "🇫🇷", name: "Francia" },
+  { code: "+49",  flag: "🇩🇪", name: "Alemania" },
+  { code: "+39",  flag: "🇮🇹", name: "Italia" },
+  { code: "+31",  flag: "🇳🇱", name: "Países Bajos" },
+  { code: "+32",  flag: "🇧🇪", name: "Bélgica" },
+  { code: "+41",  flag: "🇨🇭", name: "Suiza" },
+  { code: "+43",  flag: "🇦🇹", name: "Austria" },
+  { code: "+1",   flag: "🇺🇸", name: "EE.UU. / Canadá" },
+  { code: "+52",  flag: "🇲🇽", name: "México" },
+  { code: "+54",  flag: "🇦🇷", name: "Argentina" },
+  { code: "+56",  flag: "🇨🇱", name: "Chile" },
+  { code: "+57",  flag: "🇨🇴", name: "Colombia" },
+  { code: "+51",  flag: "🇵🇪", name: "Perú" },
+  { code: "+55",  flag: "🇧🇷", name: "Brasil" },
+  { code: "+58",  flag: "🇻🇪", name: "Venezuela" },
+  { code: "+593", flag: "🇪🇨", name: "Ecuador" },
+  { code: "+598", flag: "🇺🇾", name: "Uruguay" },
+] as const;
+
 // ─── Spanish provinces ────────────────────────────────────────────────────────
 const PROVINCES = [
   "Álava", "Albacete", "Alicante", "Almería", "Asturias", "Ávila", "Badajoz",
@@ -111,6 +135,7 @@ export default function RegistroPage() {
   const [emailError, setEmailError] = useState("");
   const [phoneError, setPhoneError] = useState("");
   const [phone, setPhone] = useState("");
+  const [phoneCountryCode, setPhoneCountryCode] = useState("+34");
   const [province, setProvince] = useState("");
   const [birthDate, setBirthDate] = useState("");
   const [ligaCard, setLigaCard] = useState("");
@@ -175,15 +200,25 @@ export default function RegistroPage() {
     setStep(2);
   };
 
+  const validatePhoneLocal = (number: string, countryCode: string): string | null => {
+    if (!number) return null;
+    if (countryCode === "+34") {
+      return /^[67]\d{8}$/.test(number) ? null : "9 dígitos, debe comenzar por 6 o 7 (ej: 612345678)";
+    }
+    return /^\d{5,14}$/.test(number) ? null : "Introduce solo los dígitos del número (sin prefijo)";
+  };
+
+  const buildFullPhone = (number: string, countryCode: string) =>
+    countryCode === "+34" ? number : `${countryCode}${number}`;
+
   const handlePhoneBlur = async () => {
     const trimmed = phone.trim().replace(/\s/g, "");
     if (!trimmed) return;
-    if (!/^[67]\d{8}$/.test(trimmed)) {
-      setPhoneError("9 dígitos, debe comenzar por 6 o 7 (ej: 612345678)");
-      return;
-    }
+    const localError = validatePhoneLocal(trimmed, phoneCountryCode);
+    if (localError) { setPhoneError(localError); return; }
     try {
-      const { data } = await api.get(`/auth/check-phone?phone=${encodeURIComponent(trimmed)}`);
+      const full = buildFullPhone(trimmed, phoneCountryCode);
+      const { data } = await api.get(`/auth/check-phone?phone=${encodeURIComponent(full)}`);
       setPhoneError(data.data.inUse ? "Este teléfono ya está asociado a otra cuenta." : "");
     } catch {
       // silent
@@ -224,8 +259,9 @@ export default function RegistroPage() {
       toast.error("El teléfono móvil es obligatorio");
       return;
     }
-    if (!/^[67]\d{8}$/.test(phoneTrimmed)) {
-      setPhoneError("9 dígitos, debe comenzar por 6 o 7 (ej: 612345678)");
+    const localPhoneError = validatePhoneLocal(phoneTrimmed, phoneCountryCode);
+    if (localPhoneError) {
+      setPhoneError(localPhoneError);
       toast.error("El teléfono no es válido");
       return;
     }
@@ -255,7 +291,7 @@ export default function RegistroPage() {
     try {
       await register(email, password, name, "player", {
         dni: dni.trim().toUpperCase() || undefined,
-        phone: phone.trim() || undefined,
+        phone: phone.trim() ? buildFullPhone(phone.trim().replace(/\s/g, ""), phoneCountryCode) : undefined,
         province: province || undefined,
         birthDate: birthDate || undefined,
         ligaCard: ligaCard.trim() || undefined,
@@ -464,18 +500,44 @@ export default function RegistroPage() {
                 <label className="block text-xs font-semibold text-ink-400 mb-1.5 uppercase tracking-wider">
                   Teléfono móvil <span className="text-red-400 text-xs font-bold ml-1">*</span>
                 </label>
-                <input
-                  value={phone}
-                  onChange={e => { setPhone(e.target.value.replace(/\D/g, "")); setPhoneError(""); }}
-                  onBlur={handlePhoneBlur}
-                  type="tel"
-                  className={clsx(inputCls, phoneError && "border-red-500/70")}
-                  placeholder="612345678"
-                  maxLength={9}
-                />
+                <div className={clsx(
+                  "flex rounded-xl border overflow-hidden transition-all",
+                  phoneError ? "border-red-500/70" : "border-ink-700 focus-within:border-red-500/60 focus-within:ring-1 focus-within:ring-red-500/20"
+                )}>
+                  <select
+                    value={phoneCountryCode}
+                    onChange={e => {
+                      setPhoneCountryCode(e.target.value);
+                      setPhone("");
+                      setPhoneError("");
+                    }}
+                    className="shrink-0 bg-ink-800 text-white text-sm px-2.5 py-2.5 border-r border-ink-700 focus:outline-none cursor-pointer"
+                    style={{ maxWidth: "7rem" }}
+                  >
+                    {COUNTRY_CODES.map(c => (
+                      <option key={c.code} value={c.code}>
+                        {c.flag} {c.code}
+                      </option>
+                    ))}
+                  </select>
+                  <input
+                    value={phone}
+                    onChange={e => { setPhone(e.target.value.replace(/\D/g, "")); setPhoneError(""); }}
+                    onBlur={handlePhoneBlur}
+                    type="tel"
+                    inputMode="numeric"
+                    className="flex-1 px-3.5 py-2.5 bg-ink-900 text-white placeholder-ink-500 text-sm focus:outline-none"
+                    placeholder={phoneCountryCode === "+34" ? "612345678" : "número sin prefijo"}
+                    maxLength={phoneCountryCode === "+34" ? 9 : 14}
+                  />
+                </div>
                 {phoneError
                   ? <p className="text-red-400 text-xs mt-1.5 flex items-center gap-1.5"><span>⚠</span> {phoneError}</p>
-                  : <p className="text-ink-600 text-xs mt-1">Obligatorio · 9 dígitos, comenzando por 6 o 7</p>
+                  : <p className="text-ink-600 text-xs mt-1">
+                      {phoneCountryCode === "+34"
+                        ? "Obligatorio · 9 dígitos, comenzando por 6 o 7"
+                        : "Obligatorio · introduce el número sin el prefijo de país"}
+                    </p>
                 }
               </div>
 

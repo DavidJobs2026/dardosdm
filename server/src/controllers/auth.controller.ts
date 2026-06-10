@@ -84,9 +84,9 @@ const registerSchema = z.object({
                      .min(7, "El DNI/NIE es obligatorio")
                      .max(15, "DNI/NIE demasiado largo")
                      .regex(/^[0-9XYZxyz][0-9]{6,7}[A-Za-z]$/, "Formato de DNI/NIE inválido"),
-  // Players must provide a valid Spanish mobile number (9 digits, starts with 6 or 7)
+  // Spanish mobile (9 digits, starts with 6/7) or international format (+countryCode + digits)
   phone:           z.string()
-                     .regex(/^[67]\d{8}$/, "El teléfono debe tener 9 dígitos y comenzar por 6 o 7")
+                     .regex(/^([67]\d{8}|\+\d{7,15})$/, "Teléfono inválido")
                      .optional()
                      .or(z.literal("")),
   province:        z.string().optional(),
