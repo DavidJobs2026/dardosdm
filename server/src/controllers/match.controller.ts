@@ -19,10 +19,15 @@ const winnerOnlySchema = z.object({
 
 export const listMatches = async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
-    const isPrivileged = req.user?.role === "organizer" || req.user?.role === "admin";
-    if (!isPrivileged) {
-      const tournament = await prisma.tournament.findUnique({ where: { id: req.params.id }, select: { isPublic: true } });
-      if (!tournament || tournament.isPublic === false) return next(notFound("Tournament"));
+    const tournament = await prisma.tournament.findUnique({
+      where: { id: req.params.id },
+      select: { id: true, isPublic: true, createdById: true, coOrganizers: { select: { userId: true } } },
+    });
+    if (!tournament) return next(notFound("Tournament"));
+
+    // ── Authorization: Public tournament = anyone; Private = owner/co-organizer only ──
+    if (!tournament.isPublic && !canManageTournament(tournament as any, req)) {
+      return next(notFound("Tournament"));
     }
 
     const { round, bracketSide, onlyActive } = req.query;
@@ -71,19 +76,23 @@ export const listMatches = async (req: AuthRequest, res: Response, next: NextFun
 
 export const getMatch = async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
-    const isPrivileged = req.user?.role === "organizer" || req.user?.role === "admin";
     const match = await prisma.match.findUnique({
       where: { id: req.params.matchId },
       include: {
         participant1: { include: { user: { select: { id: true, name: true, avatarUrl: true, elo: true } }, team: { select: { id: true, name: true, logoUrl: true } } } },
         participant2: { include: { user: { select: { id: true, name: true, avatarUrl: true, elo: true } }, team: { select: { id: true, name: true, logoUrl: true } } } },
         winner: { include: { user: { select: { id: true, name: true, avatarUrl: true } }, team: { select: { id: true, name: true } } } },
-        tournament: { select: { isPublic: true } },
+        tournament: { select: { isPublic: true, createdById: true, coOrganizers: { select: { userId: true } } } },
       },
     });
     if (!match) return next(notFound("Match"));
     if (match.tournamentId !== req.params.id) return next(notFound("Match"));
-    if (!isPrivileged && match.tournament.isPublic === false) return next(notFound("Tournament"));
+
+    // ── Authorization: Public tournament = anyone; Private = owner/co-organizer only ──
+    if (!match.tournament.isPublic && !canManageTournament(match.tournament as any, req)) {
+      return next(notFound("Tournament"));
+    }
+
     return res.json({ data: match });
   } catch (err) {
     next(err);

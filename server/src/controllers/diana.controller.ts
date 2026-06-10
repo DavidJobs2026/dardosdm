@@ -49,6 +49,17 @@ const matchInclude = {
 // ─── List dianas ──────────────────────────────────────────────────────────────
 export const listDianas = async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
+    const tournament = await prisma.tournament.findUnique({
+      where: { id: req.params.id },
+      select: { id: true, createdById: true, coOrganizers: { select: selectCoOrg } },
+    });
+    if (!tournament) return next(notFound("Tournament"));
+
+    // ── Authorization check: only organizers/co-organizers can view dianas ──
+    if (!canManageTournament(tournament as any, req)) {
+      return next(forbidden("No tienes acceso a las dianas de este torneo"));
+    }
+
     const dianas = await prisma.diana.findMany({
       where: { tournamentId: req.params.id },
       orderBy: { number: "asc" },

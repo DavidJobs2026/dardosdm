@@ -39,6 +39,11 @@ export const listParticipants = async (req: AuthRequest, res: Response, next: Ne
     const tournament = await prisma.tournament.findUnique({ where: { id: req.params.id }, include: { coOrganizers: { select: selectCoOrg } } });
     if (!tournament) return next(notFound("Tournament"));
 
+    // ── Authorization check: only organizers/co-organizers can view participant list ──
+    if (!canManageTournament(tournament, req)) {
+      return next(forbidden("No tienes acceso a los participantes de este torneo"));
+    }
+
     const participants = await prisma.participant.findMany({
       where: { tournamentId: req.params.id },
       orderBy: [{ seed: "asc" }, { registeredAt: "asc" }],
