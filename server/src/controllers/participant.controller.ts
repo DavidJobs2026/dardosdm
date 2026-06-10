@@ -44,17 +44,22 @@ export const listParticipants = async (req: AuthRequest, res: Response, next: Ne
       return next(forbidden("No tienes acceso a los participantes de este torneo"));
     }
 
-    // ── Pagination: Support limit/offset for large tournaments ──
-    const limit = Math.min(Math.max(Number(req.query.limit) || 100, 1), 500);
-    const offset = Math.max(Number(req.query.offset) || 0, 0);
+    // ── Pagination: OPT-IN only ──
+    // By default we return ALL participants — the bracket, seeding and the
+    // participant list all need the full set, and the tab counter reads the
+    // array length. Pagination is applied only when the client explicitly
+    // sends a `limit` (or `offset`) query param.
+    const hasPaging = req.query.limit !== undefined || req.query.offset !== undefined;
+    const limit  = hasPaging ? Math.min(Math.max(Number(req.query.limit) || 100, 1), 1000) : undefined;
+    const offset = hasPaging ? Math.max(Number(req.query.offset) || 0, 0) : undefined;
 
     const [participants, total] = await Promise.all([
       prisma.participant.findMany({
         where: { tournamentId: req.params.id },
         orderBy: [{ seed: "asc" }, { registeredAt: "asc" }],
         include: INCLUDE_PARTICIPANT,
-        take: limit,
-        skip: offset,
+        ...(limit  !== undefined ? { take: limit }  : {}),
+        ...(offset !== undefined ? { skip: offset } : {}),
       }),
       prisma.participant.count({ where: { tournamentId: req.params.id } }),
     ]);
@@ -102,10 +107,12 @@ export const listParticipants = async (req: AuthRequest, res: Response, next: Ne
       }
     }
 
+    const effOffset = offset ?? 0;
+    const effLimit  = limit ?? total;
     return res.json({
       data: participants,
       metricPlayers: tournament.metricPlayers ?? null,
-      pagination: { offset, limit, total, hasMore: offset + limit < total },
+      pagination: { offset: effOffset, limit: effLimit, total, hasMore: effOffset + participants.length < total },
     });
   } catch (err) {
     next(err);

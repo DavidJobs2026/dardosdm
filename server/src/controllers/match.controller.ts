@@ -30,13 +30,17 @@ export const listMatches = async (req: AuthRequest, res: Response, next: NextFun
       return next(notFound("Tournament"));
     }
 
-    const { round, bracketSide, onlyActive, limit: queryLimit = "1000", offset: queryOffset = "0" } = req.query;
+    const { round, bracketSide, onlyActive } = req.query;
     const validSides = ["winners", "losers"] as const;
     const roundNum   = round ? Number(round) : undefined;
 
-    // ── Pagination: For large tournaments, support limit/offset ──
-    const limit = Math.min(Math.max(Number(queryLimit) || 1000, 1), 5000);
-    const offset = Math.max(Number(queryOffset) || 0, 0);
+    // ── Pagination: OPT-IN only ──
+    // The bracket needs every match to render correctly, so by default we
+    // return all of them. Pagination applies only when the client explicitly
+    // sends a `limit` (or `offset`) query param.
+    const hasPaging = req.query.limit !== undefined || req.query.offset !== undefined;
+    const limit  = hasPaging ? Math.min(Math.max(Number(req.query.limit) || 1000, 1), 5000) : undefined;
+    const offset = hasPaging ? Math.max(Number(req.query.offset) || 0, 0) : undefined;
 
     const where = {
       tournamentId: req.params.id,
@@ -71,13 +75,15 @@ export const listMatches = async (req: AuthRequest, res: Response, next: NextFun
           },
           diana: { select: { id: true, number: true } },
         },
-        take: limit,
-        skip: offset,
+        ...(limit  !== undefined ? { take: limit }  : {}),
+        ...(offset !== undefined ? { skip: offset } : {}),
       }),
       prisma.match.count({ where }),
     ]);
 
-    return res.json({ data: matches, pagination: { offset, limit, total, hasMore: offset + limit < total } });
+    const effOffset = offset ?? 0;
+    const effLimit  = limit ?? total;
+    return res.json({ data: matches, pagination: { offset: effOffset, limit: effLimit, total, hasMore: effOffset + matches.length < total } });
   } catch (err) {
     next(err);
   }
