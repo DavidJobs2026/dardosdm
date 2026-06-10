@@ -106,6 +106,13 @@ const loginSchema = z.object({
   password: z.string().max(72, "Contraseña demasiado larga"),
 });
 
+// ─── Timing-attack defense ────────────────────────────────────────────────────
+// When the email doesn't exist we still run a bcrypt.compare against this fixed
+// hash so the response time is indistinguishable from a wrong-password attempt.
+// Without it, "no such user" returns ~instantly while a real user costs ~100ms,
+// giving an attacker a timing oracle to enumerate valid emails.
+const DUMMY_PASSWORD_HASH = "$2a$12$hM1RhdJBzXphOJR1R3rsrujHCd2Z59sH59FXarzrTOiv8SF5pypCm";
+
 export const checkDni = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const dni = String(req.query.dni || "").trim().toUpperCase();
@@ -331,10 +338,11 @@ export const login = async (req: Request, res: Response, next: NextFunction) => 
     const password = raw.password;
 
     const user = await prisma.user.findUnique({ where: { email } });
-    if (!user) return next(unauthorized("Invalid credentials"));
 
-    const valid = await bcrypt.compare(password, user.passwordHash);
-    if (!valid) return next(unauthorized("Invalid credentials"));
+    // Always run a bcrypt compare (against a dummy hash if the user doesn't
+    // exist) so login timing can't be used to enumerate valid emails.
+    const valid = await bcrypt.compare(password, user?.passwordHash ?? DUMMY_PASSWORD_HASH);
+    if (!user || !valid) return next(unauthorized("Invalid credentials"));
 
     // Players must verify their email before logging in
     if (!user.emailVerified) {
