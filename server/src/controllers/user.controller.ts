@@ -363,6 +363,19 @@ export const listPlayers = async (req: AuthRequest, res: Response, next: NextFun
 export const updateUserProfile = async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     if (req.user!.role === "player") return next(forbidden());
+
+    // ── Authorization: organizers may only edit players ──────────────────────
+    // Without this guard an organizer could change an admin's email + set
+    // emailVerified, then trigger a password reset to take over the account.
+    // (admins retain full access to every profile.)
+    if (req.user!.role === "organizer") {
+      const target = await prisma.user.findUnique({ where: { id: req.params.id }, select: { role: true } });
+      if (!target) return next(notFound("Usuario"));
+      if (target.role !== "player") {
+        return next(forbidden("Los organizadores solo pueden modificar jugadores"));
+      }
+    }
+
     const body = z.object({
       name:          z.string().min(2).max(100).optional(),
       email:         z.string().email().max(254).optional(),
