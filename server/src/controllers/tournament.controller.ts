@@ -196,6 +196,7 @@ export const createTournament = async (req: AuthRequest, res: Response, next: Ne
 };
 
 // ── Shared helper: re-assign all participant metric values for a tournament ───
+// OPTIMIZED: Single batch fetch + in-memory matching + batch update (avoid N+1)
 async function reassignParticipantMetrics(
   tournamentId: string,
   metric: string,
@@ -213,52 +214,93 @@ async function reassignParticipantMetrics(
     include: { user: { select: { name: true } } },
   });
 
-  for (const p of participants) {
-    let rec: { ppd: number | null; mpr: number | null; combined: number | null } | null = null;
+  // ── Batch fetch: collect all DNIs and names we need to look up ──
+  const dnis = [...new Set(participants.map(p => p.dni).filter((d): d is string => d != null))];
+  const names = [...new Set(participants.map(p => p.user?.name).filter((n): n is string => n != null))];
 
-    // Lookup by DNI (preferred season first, then most recent)
-    if (p.dni) {
-      if (preferredSeason) {
-        rec = await prisma.playerRecord.findFirst({
-          where: { dni: p.dni, season: preferredSeason, ...metricFilter },
-          orderBy: { createdAt: "desc" },
-          select: { ppd: true, mpr: true, combined: true },
-        });
-      }
-      if (!rec) {
-        rec = await prisma.playerRecord.findFirst({
-          where: { dni: p.dni, ...metricFilter },
-          orderBy: { createdAt: "desc" },
-          select: { ppd: true, mpr: true, combined: true },
-        });
+  // ── Fetch ALL records matching DNIs or names in a single query ──
+  const orConditions: any[] = [];
+  if (dnis.length > 0) {
+    orConditions.push({ dni: { in: dnis } });
+  }
+  if (names.length > 0) {
+    orConditions.push({ name: { in: names, mode: "insensitive" } });
+  }
+
+  const records = await prisma.playerRecord.findMany({
+    where: {
+      ...metricFilter,
+      ...(orConditions.length > 0 ? { OR: orConditions } : {}),
+    },
+    select: { dni: true, name: true, season: true, ppd: true, mpr: true, combined: true, createdAt: true },
+  });
+
+  // ── Build lookup maps: dni/name → best record (prefer season, then most recent) ──
+  const recordsByDni = new Map<string, typeof records>();
+  const recordsByName = new Map<string, typeof records>();
+
+  for (const rec of records) {
+    if (rec.dni) {
+      const list = recordsByDni.get(rec.dni) ?? [];
+      list.push(rec);
+      recordsByDni.set(rec.dni, list);
+    }
+    if (rec.name) {
+      const key = rec.name.toLowerCase();
+      const list = recordsByName.get(key) ?? [];
+      list.push(rec);
+      recordsByName.set(key, list);
+    }
+  }
+
+  // ── Helper: pick best record from list (prefer season, then createdAt desc) ──
+  const pickBest = (list: typeof records) => {
+    if (preferredSeason) {
+      const seasonal = list.filter(r => r.season === preferredSeason);
+      if (seasonal.length > 0) {
+        seasonal.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+        return seasonal[0];
       }
     }
-    // Fall back to name lookup if no DNI match
+    list.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+    return list[0];
+  };
+
+  // ── Prepare batch updates ──
+  const updates = [];
+  for (const p of participants) {
+    let rec: typeof records[0] | null = null;
+
+    // Lookup by DNI first
+    if (p.dni && recordsByDni.has(p.dni)) {
+      const list = recordsByDni.get(p.dni)!;
+      rec = pickBest(list);
+    }
+
+    // Fall back to name lookup
     if (!rec && p.user?.name) {
-      if (preferredSeason) {
-        rec = await prisma.playerRecord.findFirst({
-          where: { name: { equals: p.user.name, mode: "insensitive" }, season: preferredSeason, ...metricFilter },
-          orderBy: { createdAt: "desc" },
-          select: { ppd: true, mpr: true, combined: true },
-        });
-      }
-      if (!rec) {
-        rec = await prisma.playerRecord.findFirst({
-          where: { name: { equals: p.user.name, mode: "insensitive" }, ...metricFilter },
-          orderBy: { createdAt: "desc" },
-          select: { ppd: true, mpr: true, combined: true },
-        });
+      const key = p.user.name.toLowerCase();
+      if (recordsByName.has(key)) {
+        const list = recordsByName.get(key)!;
+        rec = pickBest(list);
       }
     }
 
     if (rec) {
-      const mv  = metric === "ppd" ? rec.ppd : metric === "mpr" ? rec.mpr : rec.combined;
+      const mv = metric === "ppd" ? rec.ppd : metric === "mpr" ? rec.mpr : rec.combined;
       const lvl = resolveLevel(mv, levels);
-      await prisma.participant.update({
-        where: { id: p.id },
-        data: { metricValue: mv, level: lvl },
-      });
+      updates.push(
+        prisma.participant.update({
+          where: { id: p.id },
+          data: { metricValue: mv, level: lvl },
+        })
+      );
     }
+  }
+
+  // ── Execute all updates in a transaction ──
+  if (updates.length > 0) {
+    await prisma.$transaction(updates);
   }
 }
 
