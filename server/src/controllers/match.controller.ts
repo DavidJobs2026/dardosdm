@@ -503,17 +503,26 @@ async function dropToLosers(
     return;
   }
 
-  // WB Rk (k≥2): drop into LB R(2k-2) cross-seeded to prevent rematches.
-  // groupSize = number of LB matches at this merge round (varies by bracket size):
-  //   8-player LB R2 = 2 matches → groupSize 2 → pos 0↔1
-  //  16-player LB R2 = 4 matches → groupSize 4 → pos 0↔3, 1↔2
-  //  WB Final → LB Final = 1 match → no cross-seeding
+  // WB Rk (k≥2): drop into LB R(2k-2).
+  //
+  // Cross-seeding pattern (alternating by WB round parity):
+  //   Even WB rounds (R2, R4, R6…) → reverse position within the LB merge round.
+  //     This avoids the LB R1 same-region rematch: WBR1 losers are paired adjacently
+  //     (positions 0+1, 2+3…), so WBR2 losers must be reversed to reach the opposite
+  //     region. WBR4, WBR6 losers follow the same parity for the same reason.
+  //   Odd WB rounds (R3, R5, R7…) → same position (no reversal).
+  //     After the even-round reversal has already "crossed" the bracket, applying
+  //     another reversal at the next merge undoes the correction and produces the
+  //     wrong pairings visible in LBR4, LBR8, LBR12 on a 512-player bracket.
+  //
+  // groupSize = total LB matches at this merge round (1 for WB Final → LB Final).
   lbRound = 2 * (wbRound - 1);
   const lbMatchCount = await prisma.match.count({
     where: { tournamentId, bracketLevel, round: lbRound, bracketSide: "losers" },
   });
   const groupSize = lbMatchCount > 1 ? lbMatchCount : 1;
-  lbPosition = groupSize > 1
+  const crossSeed  = wbRound % 2 === 0 && groupSize > 1;
+  lbPosition = crossSeed
     ? (Math.floor(wbPosition / groupSize) * groupSize) + (groupSize - 1 - (wbPosition % groupSize))
     : wbPosition;
 
