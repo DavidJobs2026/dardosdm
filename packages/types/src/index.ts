@@ -201,6 +201,8 @@ export interface Diana {
   posY?: number | null;
   room?: string | null;
   broken?: boolean;
+  rrGroup?: string | null;   // reserved for this RR group ("A","B"…)
+  rrLevel?: string | null;   // bracket level the reservation belongs to
 }
 
 // ─── Match ────────────────────────────────────────────────────────────────────

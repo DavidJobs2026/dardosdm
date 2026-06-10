@@ -51,13 +51,24 @@ export const listDianas = async (req: AuthRequest, res: Response, next: NextFunc
   try {
     const tournament = await prisma.tournament.findUnique({
       where: { id: req.params.id },
-      select: { id: true, createdById: true, coOrganizers: { select: selectCoOrg } },
+      select: { id: true, isPublic: true, createdById: true, coOrganizers: { select: selectCoOrg } },
     });
     if (!tournament) return next(notFound("Tournament"));
 
-    // ── Authorization check: only organizers/co-organizers can view dianas ──
+    // ── Authorization ─────────────────────────────────────────────────────────
+    //  - managers (admin/owner/co-organizer) → allowed
+    //  - registered referees of this tournament → allowed (they need their boards)
+    //  - anyone else → only on PUBLIC tournaments
     if (!canManageTournament(tournament as any, req)) {
-      return next(forbidden("No tienes acceso a las dianas de este torneo"));
+      const referee = req.user
+        ? await prisma.tournamentReferee.findUnique({
+            where: { tournamentId_userId: { tournamentId: req.params.id, userId: req.user.userId } },
+            select: { id: true },
+          })
+        : null;
+      if (!referee && !tournament.isPublic) {
+        return next(forbidden("No tienes acceso a las dianas de este torneo"));
+      }
     }
 
     const dianas = await prisma.diana.findMany({
@@ -130,6 +141,42 @@ export const assignDiana = async (req: AuthRequest, res: Response, next: NextFun
 
     broadcastMatch(req.params.matchId).catch(() => {});
     res.json({ data: null, message: `Diana ${dianaNumber} asignada` });
+  } catch (err) { next(err); }
+};
+
+// ─── Set RR group → diana reservations for one level ──────────────────────────
+// Replaces the whole reservation map for the given level. Persisted server-side
+// so referees (on other devices) see the boards and so they can be auto-freed.
+export const setGroupDianas = async (req: AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    const { level, assignments } = z.object({
+      level:       z.string().nullable().optional(),
+      assignments: z.record(z.array(z.number().int().min(1))),
+    }).parse(req.body);
+
+    const tournament = await prisma.tournament.findUnique({ where: { id: req.params.id }, include: { coOrganizers: { select: selectCoOrg } } });
+    if (!tournament) return next(notFound("Tournament"));
+    if (!canManageTournament(tournament, req)) return next(forbidden());
+
+    const lvl = level ?? null;
+
+    await prisma.$transaction(async (tx) => {
+      // Clear existing reservations for this level (only the ones actually reserved)
+      await tx.diana.updateMany({
+        where: { tournamentId: req.params.id, rrLevel: lvl, rrGroup: { not: null } },
+        data:  { rrGroup: null, rrLevel: null },
+      });
+      // Apply the new reservations
+      for (const [group, numbers] of Object.entries(assignments)) {
+        if (!numbers.length) continue;
+        await tx.diana.updateMany({
+          where: { tournamentId: req.params.id, number: { in: numbers } },
+          data:  { rrGroup: group, rrLevel: lvl },
+        });
+      }
+    });
+
+    return res.json({ data: null, message: "Reservas de grupo actualizadas" });
   } catch (err) { next(err); }
 };
 

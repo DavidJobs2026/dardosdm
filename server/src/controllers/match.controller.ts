@@ -263,6 +263,27 @@ export const reportResult = (io: SocketServer) => async (req: AuthRequest, res: 
     // Free diana when match completes
     await prisma.diana.updateMany({ where: { matchId: match.id }, data: { matchId: null } });
 
+    // ── RR group cleanup ──────────────────────────────────────────────────────
+    // When the LAST match of a round-robin group finishes, release every diana
+    // reserved for that group+level (clears the rrGroup/rrLevel reservation so
+    // the boards go back to "free" for both organizers and referees).
+    if (match.rrGroup) {
+      const remaining = await prisma.match.count({
+        where: {
+          tournamentId: match.tournamentId,
+          rrGroup:      match.rrGroup,
+          bracketLevel: match.bracketLevel ?? null,
+          status:       { notIn: ["completed", "bye"] },
+        },
+      });
+      if (remaining === 0) {
+        await prisma.diana.updateMany({
+          where: { tournamentId: match.tournamentId, rrGroup: match.rrGroup, rrLevel: match.bracketLevel ?? null },
+          data:  { rrGroup: null, rrLevel: null, matchId: null },
+        });
+      }
+    }
+
     // Emit real-time update
     io.to(`tournament:${match.tournamentId}`).emit("match:updated", updatedMatch);
 

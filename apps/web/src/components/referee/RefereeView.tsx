@@ -327,16 +327,18 @@ export function RefereeView({ tournament, refereeData, onReport }: Props) {
               {dianas.map(d => {
                 const occupied = activeDianaNumbers.has(d.number);
                 const broken = !!d.broken;
+                const reserved = !occupied && !broken && !!d.rrGroup;
                 return (
                   <div key={d.id} className={clsx(
                     "w-14 h-14 rounded-xl border-2 flex flex-col items-center justify-center font-bold text-sm",
                     occupied ? "bg-red-900/40 border-red-600/60 text-red-300" :
                     broken   ? "bg-amber-900/40 border-amber-600/60 text-amber-300" :
+                    reserved ? "bg-orange-900/30 border-orange-600/50 text-orange-300" :
                                "bg-green-900/30 border-green-700/40 text-green-400"
                   )}>
                     <span>{d.number}</span>
                     <span className="text-[9px] font-normal opacity-70">
-                      {occupied ? "En uso" : broken ? "Avería" : "Libre"}
+                      {occupied ? "En uso" : broken ? "Avería" : reserved ? `Grupo ${d.rrGroup}` : "Libre"}
                     </span>
                   </div>
                 );

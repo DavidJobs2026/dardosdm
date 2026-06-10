@@ -157,19 +157,16 @@ function CallPlayerModal({ match, callNum, onClose, onConfirm }: CallPlayerModal
   );
 }
 
-// ─── localStorage helper (mirrors the key used in RRView) ─────────────────────
+// ─── RR group reservation: derived from server-persisted dianas ───────────────
 
-function readGroupDianasForMatch(tournamentId: string, match: Match): number[] {
+const sameRrLevel = (a?: string | null, b?: string | null) => (a ?? null) === (b ?? null);
+
+/** Diana numbers reserved for this match's RR group (and level). */
+function readGroupDianasForMatch(dianas: Diana[], match: Match): number[] {
   if (!match.rrGroup) return [];
-  try {
-    const lvl = match.bracketLevel ?? "default";
-    const raw = typeof window !== "undefined"
-      ? localStorage.getItem(`rrGroupDianas:${tournamentId}:${lvl}`)
-      : null;
-    if (!raw) return [];
-    const map = JSON.parse(raw) as Record<string, number[]>;
-    return map[match.rrGroup] ?? [];
-  } catch { return []; }
+  return dianas
+    .filter(d => d.rrGroup === match.rrGroup && sameRrLevel(d.rrLevel, match.bracketLevel))
+    .map(d => d.number);
 }
 
 // ─── Match card in the queue ──────────────────────────────────────────────────
@@ -194,7 +191,7 @@ function MatchRow({ match, dianas, tournament, onDataChange, onReport, overdue, 
   // Dianas free for this match in general
   let availableDianas = dianas.filter(d => !d.matchId || d.matchId === match.id);
   // If this match belongs to an RR group with pre-assigned dianas, restrict to those
-  const groupDianas = readGroupDianasForMatch(tournament.id, match);
+  const groupDianas = readGroupDianasForMatch(dianas, match);
   if (groupDianas.length > 0) {
     availableDianas = availableDianas.filter(d => groupDianas.includes(d.number));
   }
@@ -896,45 +893,23 @@ function DianaDetail({ diana, dianas, tournament, onDataChange, onReport, onClos
   );
 }
 
-// ─── Helper: collect all group-assigned diana numbers from localStorage ───────
+// ─── Helper: collect all group-reserved diana numbers (from server-persisted dianas) ───
 
-function getAllGroupAssignedDianas(tournamentId: string): Set<number> {
+function getAllGroupAssignedDianas(dianas: Diana[]): Set<number> {
   const result = new Set<number>();
-  try {
-    if (typeof window === "undefined") return result;
-    const prefix = `rrGroupDianas:${tournamentId}:`;
-    for (let i = 0; i < localStorage.length; i++) {
-      const key = localStorage.key(i);
-      if (key && key.startsWith(prefix)) {
-        const map = JSON.parse(localStorage.getItem(key) ?? "{}") as Record<string, number[]>;
-        Object.values(map).flat().forEach(n => result.add(n));
-      }
-    }
-  } catch { /* noop */ }
+  for (const d of dianas) if (d.rrGroup) result.add(d.number);
   return result;
 }
 
 /** Returns a map: diana number → "Grupo X · Nivel Y" label for all RR-reserved dianas */
-function getGroupAssignedDianaInfo(tournamentId: string): Map<number, string> {
+function getGroupAssignedDianaInfo(dianas: Diana[]): Map<number, string> {
   const result = new Map<number, string>();
-  try {
-    if (typeof window === "undefined") return result;
-    const prefix = `rrGroupDianas:${tournamentId}:`;
-    for (let i = 0; i < localStorage.length; i++) {
-      const key = localStorage.key(i);
-      if (key && key.startsWith(prefix)) {
-        // key format: rrGroupDianas:{tournamentId}:{level}
-        const level = key.slice(prefix.length);
-        const levelLabel = level === "default" ? "" : ` · ${level}`;
-        const map = JSON.parse(localStorage.getItem(key) ?? "{}") as Record<string, number[]>;
-        for (const [groupName, nums] of Object.entries(map)) {
-          for (const n of nums) {
-            result.set(n, `Grupo ${groupName}${levelLabel}`);
-          }
-        }
-      }
+  for (const d of dianas) {
+    if (d.rrGroup) {
+      const levelLabel = d.rrLevel ? ` · ${d.rrLevel}` : "";
+      result.set(d.number, `Grupo ${d.rrGroup}${levelLabel}`);
     }
-  } catch { /* noop */ }
+  }
   return result;
 }
 
@@ -1562,8 +1537,8 @@ export function GestionTab({ tournament, matches, onMatchesChange, onAnnouncerSp
               onClickDiana={handleClickDiana}
               selectMode={selectMode}
               selectedIds={selectedIds}
-              groupAssignedNums={getAllGroupAssignedDianas(tournament.id)}
-              groupAssignedInfo={getGroupAssignedDianaInfo(tournament.id)}
+              groupAssignedNums={getAllGroupAssignedDianas(dianas)}
+              groupAssignedInfo={getGroupAssignedDianaInfo(dianas)}
             />
           )}
 
@@ -1585,7 +1560,7 @@ export function GestionTab({ tournament, matches, onMatchesChange, onAnnouncerSp
                 tournament={tournament}
                 onDataChange={() => { handleDataChange(); setSelectedDiana(null); }}
                 onClose={() => setSelectedDiana(null)}
-                rrGroupLabel={getGroupAssignedDianaInfo(tournament.id).get(selectedDiana.number)}
+                rrGroupLabel={getGroupAssignedDianaInfo(dianas).get(selectedDiana.number)}
               />
             )
           )}

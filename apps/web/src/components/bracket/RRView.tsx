@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import { Tournament, Match, Participant, RRGroup, Diana } from "@tournament/types";
 import { api } from "@/lib/api";
 import toast from "react-hot-toast";
@@ -602,38 +602,30 @@ interface Props {
   onDataChange:  () => void;
 }
 
-// ─── localStorage key helpers ─────────────────────────────────────────────────
+// ─── RR group reservation: derived from the dianas themselves ─────────────────
+// Reservations are persisted server-side (Diana.rrGroup / Diana.rrLevel) so they
+// survive reloads, are visible to referees on other devices, and are auto-freed
+// when a group finishes. The helpers below derive the per-level view.
 
-function lsKey(tournamentId: string, bracketLevel?: string | null) {
-  // Include level in key so each level has its own independent diana assignments
-  const lvl = bracketLevel ?? "default";
-  return `rrGroupDianas:${tournamentId}:${lvl}`;
-}
-function readGroupDianas(tournamentId: string, bracketLevel?: string | null): Record<string, number[]> {
-  try {
-    const raw = typeof window !== "undefined" ? localStorage.getItem(lsKey(tournamentId, bracketLevel)) : null;
-    return raw ? (JSON.parse(raw) as Record<string, number[]>) : {};
-  } catch { return {}; }
-}
-function writeGroupDianas(tournamentId: string, bracketLevel: string | null | undefined, map: Record<string, number[]>) {
-  try { localStorage.setItem(lsKey(tournamentId, bracketLevel), JSON.stringify(map)); } catch { /* noop */ }
-}
+const sameLevel = (a?: string | null, b?: string | null) => (a ?? null) === (b ?? null);
 
-/** Returns a Set of all diana numbers reserved by ANY group in OTHER levels of this tournament */
-function readOtherLevelsDianas(tournamentId: string, currentLevel?: string | null): Set<number> {
-  const result = new Set<number>();
-  try {
-    if (typeof window === "undefined") return result;
-    const prefix     = `rrGroupDianas:${tournamentId}:`;
-    const currentKey = lsKey(tournamentId, currentLevel);
-    for (let i = 0; i < localStorage.length; i++) {
-      const key = localStorage.key(i);
-      if (key && key.startsWith(prefix) && key !== currentKey) {
-        const map = JSON.parse(localStorage.getItem(key) ?? "{}") as Record<string, number[]>;
-        Object.values(map).flat().forEach(n => result.add(n));
-      }
+/** Map of { groupName: dianaNumbers[] } reserved for the given level. */
+function deriveGroupDianas(dianas: Diana[], bracketLevel?: string | null): Record<string, number[]> {
+  const map: Record<string, number[]> = {};
+  for (const d of dianas) {
+    if (d.rrGroup && sameLevel(d.rrLevel, bracketLevel)) {
+      (map[d.rrGroup] ??= []).push(d.number);
     }
-  } catch { /* noop */ }
+  }
+  return map;
+}
+
+/** Diana numbers reserved by ANY group in OTHER levels of this tournament. */
+function deriveOtherLevelsDianas(dianas: Diana[], bracketLevel?: string | null): Set<number> {
+  const result = new Set<number>();
+  for (const d of dianas) {
+    if (d.rrGroup && !sameLevel(d.rrLevel, bracketLevel)) result.add(d.number);
+  }
   return result;
 }
 
@@ -648,20 +640,9 @@ export function RRView({ tournament, matches, isOrganizer, hasKO = false, bracke
 
   // ── Group-diana state ──────────────────────────────────────────────────────
   const [dianas,         setDianas]         = useState<Diana[]>([]);
-  const [groupDianasMap, setGroupDianasMap] = useState<Record<string, number[]>>(
-    () => readGroupDianas(tournament.id, bracketLevel)
-  );
-  // Diana numbers reserved in OTHER levels — recomputed whenever bracketLevel or the
-  // current level's assignments change (groupDianasMap dep ensures we re-read after writes).
-  const [otherLevelNums, setOtherLevelNums] = useState<Set<number>>(
-    () => readOtherLevelsDianas(tournament.id, bracketLevel)
-  );
-
-  // Re-load diana assignments when the bracket level changes (user switches level tab)
-  useEffect(() => {
-    setGroupDianasMap(readGroupDianas(tournament.id, bracketLevel));
-    setOtherLevelNums(readOtherLevelsDianas(tournament.id, bracketLevel));
-  }, [tournament.id, bracketLevel]);
+  // Derived from the (server-persisted) dianas — no localStorage.
+  const groupDianasMap = useMemo(() => deriveGroupDianas(dianas, bracketLevel), [dianas, bracketLevel]);
+  const otherLevelNums = useMemo(() => deriveOtherLevelsDianas(dianas, bracketLevel), [dianas, bracketLevel]);
 
   const loadDianas = useCallback(async () => {
     try {
@@ -672,23 +653,25 @@ export function RRView({ tournament, matches, isOrganizer, hasKO = false, bracke
 
   useEffect(() => { loadDianas(); }, [loadDianas]);
 
+  // Persist the full reservation map for this level, then refresh from the server.
+  const persistGroupDianas = useCallback(async (nextMap: Record<string, number[]>) => {
+    try {
+      await api.put(`/tournaments/${tournament.id}/dianas/group-reservations`, {
+        level: bracketLevel ?? null,
+        assignments: nextMap,
+      });
+      await loadDianas();
+    } catch {
+      toast.error("Error al guardar la reserva de dianas");
+    }
+  }, [tournament.id, bracketLevel, loadDianas]);
+
   const handleAssignDiana = (groupName: string, num: number) => {
-    setGroupDianasMap(prev => {
-      const next = { ...prev, [groupName]: [...(prev[groupName] ?? []), num] };
-      writeGroupDianas(tournament.id, bracketLevel, next);
-      // Re-read other levels in case a same-number diana was just freed elsewhere
-      setOtherLevelNums(readOtherLevelsDianas(tournament.id, bracketLevel));
-      return next;
-    });
+    persistGroupDianas({ ...groupDianasMap, [groupName]: [...(groupDianasMap[groupName] ?? []), num] });
   };
 
   const handleUnassignDiana = (groupName: string, num: number) => {
-    setGroupDianasMap(prev => {
-      const next = { ...prev, [groupName]: (prev[groupName] ?? []).filter(n => n !== num) };
-      writeGroupDianas(tournament.id, bracketLevel, next);
-      setOtherLevelNums(readOtherLevelsDianas(tournament.id, bracketLevel));
-      return next;
-    });
+    persistGroupDianas({ ...groupDianasMap, [groupName]: (groupDianasMap[groupName] ?? []).filter(n => n !== num) });
   };
 
   const advancingCount = tournament.rrAdvancingTeams ?? 2;
@@ -720,6 +703,9 @@ export function RRView({ tournament, matches, isOrganizer, hasKO = false, bracke
     .sort()
     .join("|");
   useEffect(() => { loadStandings(); }, [completedCount, calledCount, resultsKey, loadStandings]);
+  // Re-fetch dianas when results change so auto-freed group boards (cleared
+  // server-side when a group's last match finishes) drop back to "free".
+  useEffect(() => { loadDianas(); }, [completedCount, resultsKey, loadDianas]);
 
   const allGroupsReviewed = groups.length > 0 && groups.every(g => g.reviewed);
 

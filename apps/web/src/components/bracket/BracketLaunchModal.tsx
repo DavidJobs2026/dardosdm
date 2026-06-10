@@ -11,13 +11,11 @@ import { announceMatch } from "@/lib/tts";
 interface Props {
   match:        Match;
   tournamentId: string;
-  /** When set, only dianas with these numbers are offered (group filter) */
-  groupDianas?: number[];
   onClose:      () => void;
   onSuccess:    () => void; // refresh bracket data
 }
 
-export function BracketLaunchModal({ match, tournamentId, groupDianas, onClose, onSuccess }: Props) {
+export function BracketLaunchModal({ match, tournamentId, onClose, onSuccess }: Props) {
   const [dianas,   setDianas]   = useState<Diana[]>([]);
   const [loading,  setLoading]  = useState(true);
   const [selected, setSelected] = useState<number | null>(
@@ -38,9 +36,15 @@ export function BracketLaunchModal({ match, tournamentId, groupDianas, onClose, 
 
   // Free dianas + the one already assigned to this match
   let available = dianas.filter(d => !d.matchId || d.matchId === match.id);
-  // When a group has pre-assigned dianas, restrict to those numbers only
-  if (groupDianas && groupDianas.length > 0) {
-    available = available.filter(d => groupDianas.includes(d.number));
+  // When this match belongs to an RR group, restrict to that group's reserved
+  // dianas (read straight from the server-persisted reservation on each diana).
+  if (match.rrGroup) {
+    const groupNums = dianas
+      .filter(d => d.rrGroup === match.rrGroup && (d.rrLevel ?? null) === (match.bracketLevel ?? null))
+      .map(d => d.number);
+    if (groupNums.length > 0) {
+      available = available.filter(d => groupNums.includes(d.number));
+    }
   }
 
   const handleLaunch = async () => {

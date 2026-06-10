@@ -17,7 +17,7 @@ import {
 import { listMatches, getMatch, reportResult, repairBracket, resetMatchResult } from "../controllers/match.controller";
 import { listReferees, getMyReferee, addReferee, removeReferee } from "../controllers/referee.controller";
 import { listCoOrganizers, addCoOrganizer, removeCoOrganizer } from "../controllers/coOrganizer.controller";
-import { listDianas, setupDianas, saveLayout, assignDiana, unassignDiana, deleteDiana, bulkDeleteDianas, toggleBrokenDiana, launchMatch, noShowMatch, recallMatch } from "../controllers/diana.controller";
+import { listDianas, setupDianas, saveLayout, assignDiana, setGroupDianas, unassignDiana, deleteDiana, bulkDeleteDianas, toggleBrokenDiana, launchMatch, noShowMatch, recallMatch } from "../controllers/diana.controller";
 import { authenticate, requireRole, optionalAuthenticate } from "../middlewares/auth.middleware";
 import { tournamentImageUpload } from "../middlewares/upload.middleware";
 import { uploadTournamentImage, removeTournamentImage } from "../controllers/tournament.controller";
@@ -92,6 +92,7 @@ export default function tournamentRoutes(io: SocketServer): Router {
   router.delete("/:id/dianas/:dianaId",         authenticate, writeLimiter, deleteDiana);
   router.patch("/:id/dianas/:dianaId/broken",   authenticate, writeLimiter, toggleBrokenDiana);
   router.post("/:id/matches/:matchId/assign-diana", authenticate, writeLimiter, assignDiana);
+  router.put("/:id/dianas/group-reservations",      authenticate, writeLimiter, setGroupDianas);
   router.delete("/:id/matches/:matchId/diana",      authenticate, writeLimiter, unassignDiana);
   router.post("/:id/matches/:matchId/launch",       authenticate, writeLimiter, launchMatch);
   router.post("/:id/matches/:matchId/recall",       authenticate, writeLimiter, recallMatch);
