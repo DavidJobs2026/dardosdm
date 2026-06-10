@@ -30,9 +30,13 @@ export const listMatches = async (req: AuthRequest, res: Response, next: NextFun
       return next(notFound("Tournament"));
     }
 
-    const { round, bracketSide, onlyActive } = req.query;
+    const { round, bracketSide, onlyActive, limit: queryLimit = "1000", offset: queryOffset = "0" } = req.query;
     const validSides = ["winners", "losers"] as const;
     const roundNum   = round ? Number(round) : undefined;
+
+    // ── Pagination: For large tournaments, support limit/offset ──
+    const limit = Math.min(Math.max(Number(queryLimit) || 1000, 1), 5000);
+    const offset = Math.max(Number(queryOffset) || 0, 0);
 
     const where = {
       tournamentId: req.params.id,
@@ -42,33 +46,38 @@ export const listMatches = async (req: AuthRequest, res: Response, next: NextFun
       ...(onlyActive === "true" ? { status: { notIn: ["completed", "bye"] as ("completed" | "bye")[] } } : {}),
     };
 
-    const matches = await prisma.match.findMany({
-      where,
-      orderBy: [{ round: "asc" }, { position: "asc" }],
-      include: {
-        participant1: {
-          include: {
-            user: { select: { id: true, name: true, avatarUrl: true, elo: true } },
-            team: { select: { id: true, name: true, logoUrl: true } },
+    const [matches, total] = await Promise.all([
+      prisma.match.findMany({
+        where,
+        orderBy: [{ round: "asc" }, { position: "asc" }],
+        include: {
+          participant1: {
+            include: {
+              user: { select: { id: true, name: true, avatarUrl: true, elo: true } },
+              team: { select: { id: true, name: true, logoUrl: true } },
+            },
           },
-        },
-        participant2: {
-          include: {
-            user: { select: { id: true, name: true, avatarUrl: true, elo: true } },
-            team: { select: { id: true, name: true, logoUrl: true } },
+          participant2: {
+            include: {
+              user: { select: { id: true, name: true, avatarUrl: true, elo: true } },
+              team: { select: { id: true, name: true, logoUrl: true } },
+            },
           },
-        },
-        winner: {
-          include: {
-            user: { select: { id: true, name: true, avatarUrl: true } },
-            team: { select: { id: true, name: true } },
+          winner: {
+            include: {
+              user: { select: { id: true, name: true, avatarUrl: true } },
+              team: { select: { id: true, name: true } },
+            },
           },
+          diana: { select: { id: true, number: true } },
         },
-        diana: { select: { id: true, number: true } },
-      },
-    });
+        take: limit,
+        skip: offset,
+      }),
+      prisma.match.count({ where }),
+    ]);
 
-    return res.json({ data: matches });
+    return res.json({ data: matches, pagination: { offset, limit, total, hasMore: offset + limit < total } });
   } catch (err) {
     next(err);
   }

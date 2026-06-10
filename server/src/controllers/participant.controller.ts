@@ -44,11 +44,20 @@ export const listParticipants = async (req: AuthRequest, res: Response, next: Ne
       return next(forbidden("No tienes acceso a los participantes de este torneo"));
     }
 
-    const participants = await prisma.participant.findMany({
-      where: { tournamentId: req.params.id },
-      orderBy: [{ seed: "asc" }, { registeredAt: "asc" }],
-      include: INCLUDE_PARTICIPANT,
-    });
+    // ── Pagination: Support limit/offset for large tournaments ──
+    const limit = Math.min(Math.max(Number(req.query.limit) || 100, 1), 500);
+    const offset = Math.max(Number(req.query.offset) || 0, 0);
+
+    const [participants, total] = await Promise.all([
+      prisma.participant.findMany({
+        where: { tournamentId: req.params.id },
+        orderBy: [{ seed: "asc" }, { registeredAt: "asc" }],
+        include: INCLUDE_PARTICIPANT,
+        take: limit,
+        skip: offset,
+      }),
+      prisma.participant.count({ where: { tournamentId: req.params.id } }),
+    ]);
 
     // ── Enrich team-member metrics from PlayerRecord for legacy rows ──────────
     // Members inscribed before TeamMember.metricValue existed will have null.
@@ -93,7 +102,11 @@ export const listParticipants = async (req: AuthRequest, res: Response, next: Ne
       }
     }
 
-    return res.json({ data: participants, metricPlayers: tournament.metricPlayers ?? null });
+    return res.json({
+      data: participants,
+      metricPlayers: tournament.metricPlayers ?? null,
+      pagination: { offset, limit, total, hasMore: offset + limit < total },
+    });
   } catch (err) {
     next(err);
   }
