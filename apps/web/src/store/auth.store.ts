@@ -20,6 +20,11 @@ interface AuthState {
   user: User | null;
   accessToken: string | null;   // in-memory only — NOT persisted to localStorage
   isLoading: boolean;
+  /** Becomes true once initAuth() has finished (success OR failure). Pages that
+   *  fetch protected data should wait for this so the access token is attached
+   *  to their first request — otherwise a fresh load races the cookie exchange
+   *  and a private resource 404s before auth is ready. */
+  authInitialized: boolean;
 
   login:       (email: string, password: string) => Promise<void>;
   register:    (email: string, password: string, name: string, role: "organizer" | "player", extra?: PlayerExtra) => Promise<void>;
@@ -37,6 +42,7 @@ export const useAuthStore = create<AuthState>()(
       user: null,
       accessToken: null,
       isLoading: false,
+      authInitialized: false,
 
       login: async (email, password) => {
         set({ isLoading: true });
@@ -106,38 +112,43 @@ export const useAuthStore = create<AuthState>()(
         // cookie for a fresh access token. Two separate try/catch blocks so
         // a transient /auth/me error never logs the user out when the refresh
         // itself succeeded.
+        try {
+          // Fast path: in-memory token still alive (same-tab re-render)
+          const existing = getAccessToken();
+          if (existing) {
+            try {
+              const me = await api.get("/auth/me");
+              set({ user: me.data.data });
+              return;
+            } catch { /* token expired — fall through to refresh */ }
+          }
 
-        // Fast path: in-memory token still alive (same-tab re-render)
-        const existing = getAccessToken();
-        if (existing) {
+          // ── Step 1: exchange cookie for a new access token ──────────────────
+          // Use the shared refreshAccessToken() from api.ts so this call and any
+          // concurrent 401-interceptor refresh share the same promise — only ONE
+          // HTTP request is made, eliminating the delete-first race condition.
+          let accessToken: string;
+          try {
+            accessToken = await refreshAccessToken();
+            set({ accessToken });
+          } catch {
+            // No valid cookie → not logged in
+            setAccessToken(null);
+            set({ user: null, accessToken: null });
+            return;
+          }
+
+          // ── Step 2: fetch user data (best-effort, don't log out on failure) ──
           try {
             const me = await api.get("/auth/me");
             set({ user: me.data.data });
-            return;
-          } catch { /* token expired — fall through to refresh */ }
-        }
-
-        // ── Step 1: exchange cookie for a new access token ──────────────────
-        // Use the shared refreshAccessToken() from api.ts so this call and any
-        // concurrent 401-interceptor refresh share the same promise — only ONE
-        // HTTP request is made, eliminating the delete-first race condition.
-        let accessToken: string;
-        try {
-          accessToken = await refreshAccessToken();
-          set({ accessToken });
-        } catch {
-          // No valid cookie → not logged in
-          setAccessToken(null);
-          set({ user: null, accessToken: null });
-          return;
-        }
-
-        // ── Step 2: fetch user data (best-effort, don't log out on failure) ──
-        try {
-          const me = await api.get("/auth/me");
-          set({ user: me.data.data });
-        } catch {
-          // Keep the token alive; UI will retry on next interaction
+          } catch {
+            // Keep the token alive; UI will retry on next interaction
+          }
+        } finally {
+          // Signal that auth bootstrap is done (success or failure) so pages can
+          // safely fetch protected data with the token already attached.
+          set({ authInitialized: true });
         }
       },
     }),

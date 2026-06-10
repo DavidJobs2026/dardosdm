@@ -1550,6 +1550,7 @@ type Tab = "bracket" | "participants" | "setup" | "standings" | "gestion";
 export default function TournamentDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const { user } = useAuthStore();
+  const authInitialized = useAuthStore((s) => s.authInitialized);
 
   const [tournament, setTournament] = useState<Tournament | null>(null);
   const [participants, setParticipants] = useState<Participant[]>([]);
@@ -1615,7 +1616,11 @@ export default function TournamentDetailPage({ params }: { params: Promise<{ id:
     }
   }, [id]);
 
-  useEffect(() => { loadData(); }, [loadData]);
+  // Wait until auth bootstrap finishes before the first fetch. On a fresh load
+  // (especially mobile, where there's no in-memory token yet) firing getTournament
+  // before the cookie→token exchange completes sends it unauthenticated, and a
+  // private tournament then 404s ("Torneo no encontrado") with no retry.
+  useEffect(() => { if (authInitialized) loadData(); }, [authInitialized, loadData]);
 
   // Real-time match updates — reload all matches so bracket slots filled by
   // advancement logic (next-round participants) are also reflected
