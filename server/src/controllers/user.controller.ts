@@ -212,6 +212,7 @@ export const batchCreateUsers = async (req: AuthRequest, res: Response, next: Ne
           }
 
           if (!already && notFull && !aboveLimit) {
+            const payment = p.paymentStatus ?? "pending";
             await prisma.participant.create({
               data: {
                 tournamentId:  tournament.id,
@@ -223,11 +224,24 @@ export const batchCreateUsers = async (req: AuthRequest, res: Response, next: Ne
                 dni:           p.dni           ?? null,
                 teamName:      p.teamName      ?? null,
                 provincia:     p.provincia     ?? null,
-                paymentStatus: p.paymentStatus ?? "pending",
+                paymentStatus: payment,
                 paymentMethod: p.paymentMethod ?? null,
               },
             });
             currentParticipantCount++;
+            audit({
+              req,
+              action: "user.batch_create",
+              entityType: "participant",
+              entityId: tournament.id,
+              entityName: existing.name,
+              details: {
+                paymentStatus: payment,
+                paymentMethod: p.paymentMethod ?? null,
+                tournamentId:  tournament.id,
+                tournamentName: tournament.name,
+              },
+            });
           }
         }
       } catch (err: any) {
@@ -235,18 +249,7 @@ export const batchCreateUsers = async (req: AuthRequest, res: Response, next: Ne
       }
     }
 
-    const createdResults = results.filter(r => r.status === "created");
-    const created = createdResults.length;
-    const playerNames = createdResults.map(r => r.name);
-    const singleName = playerNames.length === 1 ? playerNames[0] : undefined;
-    audit({
-      req,
-      action: "user.batch_create",
-      entityType: "user",
-      entityId: tournamentId,
-      entityName: singleName ?? tournament?.name ?? undefined,
-      details: { total: players.length, created, tournamentId, playerNames, tournamentName: tournament?.name ?? null },
-    });
+    // Individual audits were already fired per inscription inside the loop.
     return res.json({ data: results });
   } catch (err) {
     next(err);

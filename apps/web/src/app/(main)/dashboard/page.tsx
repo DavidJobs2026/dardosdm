@@ -1368,14 +1368,11 @@ function buildDetailLine(log: AuditEntry): string | null {
   }
 
   if (log.action === "user.batch_create") {
-    const names = Array.isArray(d.playerNames) ? (d.playerNames as string[]) : [];
-    if (names.length > 0) {
-      const shown = names.slice(0, 3).join(", ");
-      const extra = names.length > 3 ? ` +${names.length - 3} más` : "";
-      parts.push(shown + extra);
-    }
+    if (d.paymentStatus === "paid") parts.push("✓ Pagado");
+    else if (d.paymentStatus === "pending") parts.push("· Pendiente de pago");
+    if (d.paymentMethod === "cash") parts.push("Efectivo");
+    else if (d.paymentMethod === "card") parts.push("Tarjeta");
     if (d.tournamentName) parts.push(String(d.tournamentName));
-    if (typeof d.total === "number" && d.total > 1) parts.push(`${d.created} de ${d.total} inscritos`);
   }
 
   if (log.action === "user.role_change" && d.from && d.to) {
@@ -1493,9 +1490,7 @@ function AuditLogPanel() {
         <div className="space-y-1.5">
           {logs.map(log => {
             const detailLine = buildDetailLine(log);
-            const actionLabel = log.action === "user.batch_create" && (log.details as any)?.total > 1
-              ? "Jugadores inscritos"
-              : ACTION_LABELS[log.action] ?? log.action;
+            const actionLabel = ACTION_LABELS[log.action] ?? log.action;
             return (
             <div key={log.id} className="flex items-start gap-3 p-3 rounded-xl bg-ink-800 border border-ink-700/60">
               <div className="min-w-0 flex-1">
