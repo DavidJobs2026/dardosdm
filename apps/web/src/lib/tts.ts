@@ -117,6 +117,7 @@ const _ACCENT_MAP: Record<string, string> = {
   ceballos:    "Ceballos",
   cepeda:      "Cepeda",
   cervantes:   "Cervantes",
+  chinchon:    "Chinchón",
   cifuentes:   "Cifuentes",
   cobos:       "Cobos",
   contreras:   "Contreras",
