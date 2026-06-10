@@ -39,8 +39,12 @@ export const listParticipants = async (req: AuthRequest, res: Response, next: Ne
     const tournament = await prisma.tournament.findUnique({ where: { id: req.params.id }, include: { coOrganizers: { select: selectCoOrg } } });
     if (!tournament) return next(notFound("Tournament"));
 
-    // ── Authorization check: only organizers/co-organizers can view participant list ──
-    if (!canManageTournament(tournament, req)) {
+    // ── Authorization ─────────────────────────────────────────────────────────
+    //  - managers (admin/owner/co-organizer) → full participant data
+    //  - everyone else                       → only on PUBLIC tournaments, and
+    //                                           with PII (dni / payment) stripped
+    const canManage = canManageTournament(tournament, req);
+    if (!canManage && !tournament.isPublic) {
       return next(forbidden("No tienes acceso a los participantes de este torneo"));
     }
 
@@ -107,10 +111,17 @@ export const listParticipants = async (req: AuthRequest, res: Response, next: Ne
       }
     }
 
+    // ── Strip PII for non-managers (public viewers / players) ──────────────────
+    // Names, seeds, teams, levels and metrics are public; DNI and payment info
+    // are organizer-only.
+    const data = canManage
+      ? participants
+      : participants.map(({ dni, paymentStatus, paymentMethod, ...rest }) => rest);
+
     const effOffset = offset ?? 0;
     const effLimit  = limit ?? total;
     return res.json({
-      data: participants,
+      data,
       metricPlayers: tournament.metricPlayers ?? null,
       pagination: { offset: effOffset, limit: effLimit, total, hasMore: effOffset + participants.length < total },
     });
