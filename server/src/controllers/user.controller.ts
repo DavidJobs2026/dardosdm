@@ -235,8 +235,18 @@ export const batchCreateUsers = async (req: AuthRequest, res: Response, next: Ne
       }
     }
 
-    const created = results.filter(r => r.status === "created").length;
-    audit({ req, action: "user.batch_create", entityType: "user", entityId: tournamentId, details: { total: players.length, created, tournamentId } });
+    const createdResults = results.filter(r => r.status === "created");
+    const created = createdResults.length;
+    const playerNames = createdResults.map(r => r.name);
+    const singleName = playerNames.length === 1 ? playerNames[0] : undefined;
+    audit({
+      req,
+      action: "user.batch_create",
+      entityType: "user",
+      entityId: tournamentId,
+      entityName: singleName ?? tournament?.name ?? undefined,
+      details: { total: players.length, created, tournamentId, playerNames, tournamentName: tournament?.name ?? null },
+    });
     return res.json({ data: results });
   } catch (err) {
     next(err);

@@ -1324,6 +1324,7 @@ const ACTION_LABELS: Record<string, string> = {
   "user.role_change":             "Rol cambiado",
   "user.reset_password":          "Contraseña restablecida",
   "user.ban":                     "Usuario bloqueado",
+  "user.batch_create":            "Jugador inscrito",
 };
 
 const ACTION_COLOR: Record<string, string> = {
@@ -1335,6 +1336,7 @@ const ACTION_COLOR: Record<string, string> = {
   "user.reset_password": "text-yellow-400 bg-yellow-900/20",
   "match.report":        "text-blue-400 bg-blue-900/20",
   "match.recall":        "text-violet-400 bg-violet-900/20",
+  "user.batch_create":   "text-emerald-400 bg-emerald-900/20",
 };
 
 /** Build a compact detail string from the stored details object */
@@ -1363,6 +1365,17 @@ function buildDetailLine(log: AuditEntry): string | null {
       }
       if (d.bracketLevel) parts.push(String(d.bracketLevel));
     }
+  }
+
+  if (log.action === "user.batch_create") {
+    const names = Array.isArray(d.playerNames) ? (d.playerNames as string[]) : [];
+    if (names.length > 0) {
+      const shown = names.slice(0, 3).join(", ");
+      const extra = names.length > 3 ? ` +${names.length - 3} más` : "";
+      parts.push(shown + extra);
+    }
+    if (d.tournamentName) parts.push(String(d.tournamentName));
+    if (typeof d.total === "number" && d.total > 1) parts.push(`${d.created} de ${d.total} inscritos`);
   }
 
   if (log.action === "user.role_change" && d.from && d.to) {
@@ -1480,6 +1493,9 @@ function AuditLogPanel() {
         <div className="space-y-1.5">
           {logs.map(log => {
             const detailLine = buildDetailLine(log);
+            const actionLabel = log.action === "user.batch_create" && (log.details as any)?.total > 1
+              ? "Jugadores inscritos"
+              : ACTION_LABELS[log.action] ?? log.action;
             return (
             <div key={log.id} className="flex items-start gap-3 p-3 rounded-xl bg-ink-800 border border-ink-700/60">
               <div className="min-w-0 flex-1">
@@ -1489,7 +1505,7 @@ function AuditLogPanel() {
                     "inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-semibold shrink-0",
                     ACTION_COLOR[log.action] ?? "text-ink-300 bg-ink-700"
                   )}>
-                    {ACTION_LABELS[log.action] ?? log.action}
+                    {actionLabel}
                   </span>
                   {log.entityName && (
                     <span className="text-ink-300 text-xs font-medium" title={log.entityName}>
