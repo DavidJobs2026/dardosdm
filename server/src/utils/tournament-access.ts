@@ -18,9 +18,13 @@ export function canManageTournament(
   tournament: { createdById: string; coOrganizers?: { userId: string }[] },
   req: AuthRequest,
 ): boolean {
-  if (req.user!.role === "admin") return true;
-  if (tournament.createdById === req.user!.userId) return true;
-  return tournament.coOrganizers?.some(c => c.userId === req.user!.userId) ?? false;
+  // req.user is undefined on routes that use optionalAuthenticate (anonymous
+  // viewers, or clients that don't send a token). No user → cannot manage.
+  const user = req.user;
+  if (!user) return false;
+  if (user.role === "admin") return true;
+  if (tournament.createdById === user.userId) return true;
+  return tournament.coOrganizers?.some(c => c.userId === user.userId) ?? false;
 }
 
 /** Convenience select shape — add to every tournament fetch that precedes a canManage check */
