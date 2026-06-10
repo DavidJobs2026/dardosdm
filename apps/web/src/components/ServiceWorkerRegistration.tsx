@@ -1,12 +1,35 @@
 "use client";
 import { useEffect } from "react";
 
+// iOS Safari suspends AudioContext until a user gesture unlocks it.
+// We create and resume the context on first touch/click, then reuse it.
+let _ctx: AudioContext | null = null;
+
+function getCtx(): AudioContext | null {
+  const AudioCtx = window.AudioContext ?? (window as any).webkitAudioContext;
+  if (!AudioCtx) return null;
+  if (!_ctx) _ctx = new AudioCtx();
+  return _ctx;
+}
+
+function unlockAudio() {
+  const ctx = getCtx();
+  if (!ctx) return;
+  if (ctx.state === "suspended") ctx.resume();
+  // iOS requires playing a silent buffer to fully unlock
+  const buf = ctx.createBuffer(1, 1, 22050);
+  const src = ctx.createBufferSource();
+  src.buffer = buf;
+  src.connect(ctx.destination);
+  src.start(0);
+}
+
 function playNotificationTone() {
   try {
-    const AudioCtx = window.AudioContext ?? (window as any).webkitAudioContext;
-    if (!AudioCtx) return;
-    const ctx = new AudioCtx();
-    // Two-note descending ding: A5 → F#5
+    const ctx = getCtx();
+    if (!ctx) return;
+    if (ctx.state === "suspended") { ctx.resume(); return; } // not yet unlocked, skip
+
     const notes: { freq: number; start: number; dur: number }[] = [
       { freq: 880, start: 0,    dur: 0.28 },
       { freq: 740, start: 0.22, dur: 0.38 },
@@ -25,8 +48,7 @@ function playNotificationTone() {
       osc.start(t);
       osc.stop(t + dur);
     });
-    setTimeout(() => ctx.close(), 1200);
-  } catch { /* silent fail — AudioContext unavailable */ }
+  } catch { /* AudioContext unavailable */ }
 }
 
 export function ServiceWorkerRegistration() {
@@ -37,11 +59,20 @@ export function ServiceWorkerRegistration() {
       console.error("Service worker registration failed:", err)
     );
 
+    // Unlock AudioContext on first user interaction (required by iOS Safari)
+    document.addEventListener("touchstart", unlockAudio, { passive: true });
+    document.addEventListener("click",      unlockAudio, { passive: true });
+
     const handler = (event: MessageEvent) => {
       if (event.data?.type === "push-notification") playNotificationTone();
     };
     navigator.serviceWorker.addEventListener("message", handler);
-    return () => navigator.serviceWorker.removeEventListener("message", handler);
+
+    return () => {
+      navigator.serviceWorker.removeEventListener("message", handler);
+      document.removeEventListener("touchstart", unlockAudio);
+      document.removeEventListener("click",      unlockAudio);
+    };
   }, []);
 
   return null;
