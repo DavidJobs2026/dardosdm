@@ -311,11 +311,13 @@ export const updateTournament = async (req: AuthRequest, res: Response, next: Ne
     if (!canManage(tournament, req)) {
       return next(forbidden());
     }
-    if (tournament.status === "in_progress" || tournament.status === "completed") {
+    const { levels, preferredSeason, ...body } = updateSchema.parse(req.body);
+
+    // Allow toggling visibility on any status; only block structural edits on active/completed tournaments
+    const isVisibilityOnlyPatch = Object.keys(req.body).length === 1 && "isPublic" in req.body;
+    if (!isVisibilityOnlyPatch && (tournament.status === "in_progress" || tournament.status === "completed")) {
       return next(badRequest("Cannot edit a tournament that is already in progress or completed"));
     }
-
-    const { levels, preferredSeason, ...body } = updateSchema.parse(req.body);
     const prevMetric = tournament.metric; // capture before update
 
     const updated = await prisma.tournament.update({
