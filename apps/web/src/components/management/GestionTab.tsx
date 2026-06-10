@@ -7,7 +7,7 @@ import { clsx } from "clsx";
 import {
   Target, Play, AlertTriangle, X, Clock, Check,
   Plus, RefreshCw, ChevronDown, Unlock, LayoutGrid,
-  Wrench, Trash2, CheckSquare, Volume2, VolumeX,
+  Wrench, Trash2, CheckSquare, Volume2, VolumeX, Zap,
 } from "lucide-react";
 import toast from "react-hot-toast";
 import { ReportResultModal } from "@/components/bracket/ReportResultModal";
@@ -938,6 +938,7 @@ export function GestionTab({ tournament, matches, onMatchesChange, onAnnouncerSp
   const [bulkDeleting,     setBulkDeleting]     = useState(false);
   const [confirmBulkDel,   setConfirmBulkDel]   = useState(false);
   const [launchingLevels,  setLaunchingLevels]  = useState<Set<string>>(new Set());
+  const [autoAssigning,    setAutoAssigning]    = useState(false);
 
   // ── Referee management ─────────────────────────────────────────────────────
   const [referees, setReferees] = useState<any[]>([]);
@@ -1220,6 +1221,33 @@ export function GestionTab({ tournament, matches, onMatchesChange, onAnnouncerSp
       lvl,
       matches: list.filter(m => (m.bracketLevel ?? "Sin nivel") === lvl),
     }));
+
+  // Auto-assign all free dianas to pending bracket matches (non-RR), without launching
+  const handleAutoAssignDianas = async () => {
+    const bracketUnassigned = unassignedMatches.filter(
+      m => !m.rrGroup && !dianas.some(d => d.matchId === m.id)
+    );
+    const freeDianas = dianas
+      .filter(d => !d.matchId && !d.broken)
+      .sort((a, b) => a.number - b.number);
+    const count = Math.min(bracketUnassigned.length, freeDianas.length);
+    if (count === 0) { toast.error("No hay dianas libres o partidos sin diana"); return; }
+
+    setAutoAssigning(true);
+    try {
+      for (let i = 0; i < count; i++) {
+        await api.post(`/tournaments/${tournament.id}/matches/${bracketUnassigned[i].id}/assign-diana`, {
+          dianaNumber: freeDianas[i].number,
+        });
+      }
+      toast.success(`${count} diana${count !== 1 ? "s" : ""} asignada${count !== 1 ? "s" : ""}`);
+      handleDataChange();
+    } catch (err: any) {
+      toast.error(err.response?.data?.message ?? "Error al asignar dianas");
+    } finally {
+      setAutoAssigning(false);
+    }
+  };
 
   // Refresh dianas periodically so live status stays updated
   useEffect(() => {
@@ -1620,6 +1648,25 @@ export function GestionTab({ tournament, matches, onMatchesChange, onAnnouncerSp
                   <div className="flex items-center gap-2">
                     <span className="text-[10px] font-bold uppercase tracking-widest text-emerald-600">Pendientes de lanzar</span>
                     <div className="h-px flex-1 bg-ink-800" />
+                    {unassignedMatches.some(m => !m.rrGroup && !dianas.some(d => d.matchId === m.id)) &&
+                     dianas.some(d => !d.matchId && !d.broken) && (
+                      <button
+                        type="button"
+                        disabled={autoAssigning}
+                        onClick={handleAutoAssignDianas}
+                        className={clsx(
+                          "flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[10px] font-bold transition-all",
+                          autoAssigning
+                            ? "bg-sky-900/30 text-sky-500 cursor-not-allowed"
+                            : "bg-sky-700 hover:bg-sky-600 text-white"
+                        )}
+                      >
+                        {autoAssigning
+                          ? <><RefreshCw className="w-3 h-3 animate-spin" /> Asignando…</>
+                          : <><Zap className="w-3 h-3" /> Asignar dianas</>
+                        }
+                      </button>
+                    )}
                     <span className="text-[10px] text-ink-700">{unassignedMatches.length}</span>
                   </div>
                   {groupByLevel(unassignedMatches).map(({ lvl, matches: lvlMatches }) => {
