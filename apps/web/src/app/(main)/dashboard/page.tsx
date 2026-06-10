@@ -1554,7 +1554,9 @@ export default function DashboardPage() {
   useEffect(() => {
     if (!user) { router.push("/auth/login"); return; }
     if (user.role === "player") { router.push("/torneos"); return; }
-    api.get("/tournaments")
+    // limit=100 (backend max) so the stats cards and "Mis torneos" list aren't
+    // capped at the default page of 20. Stats are computed from this array.
+    api.get("/tournaments?limit=100")
       .then(({ data }) => setTournaments(data.data))
       .catch(() => toast.error("Error cargando torneos"))
       .finally(() => setLoading(false));
