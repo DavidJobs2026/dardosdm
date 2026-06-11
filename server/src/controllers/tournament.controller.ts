@@ -404,15 +404,16 @@ export const deleteTournament = async (req: AuthRequest, res: Response, next: Ne
  * For tournaments without levels (bracketLevel = null) groups are simply:
  *   G1, G2, G3 … (no alphabet overflow possible)
  */
-function rrGroupLabel(i: number, bracketLevel: string | null): string {
+function rrGroupLabel(i: number, bracketLevel: string | null, total: number = 1): string {
+  // Zero-pad so lexicographic sort matches numeric order (e.g. 01, 02 … 14 not 1, 10, 11 … 2)
+  const pad = String(total).length;
+  const num = String(i + 1).padStart(pad, "0");
   if (bracketLevel) {
     const prefix = bracketLevel.trim();
-    // Use a dash only when the prefix is longer than 2 chars (e.g. "Nivel 1-3")
     const sep = prefix.length > 2 ? "-" : "";
-    return `${prefix}${sep}${i + 1}`;
+    return `${prefix}${sep}${num}`;
   }
-  // No category → simple numbered groups: G1, G2 …
-  return `G${i + 1}`;
+  return `G${num}`;
 }
 
 /** Helper: generate RR groups + match data for a slice of participants within one level.
@@ -450,7 +451,7 @@ function buildRRGroups(
     }
   }
   const groupCount = Math.ceil(ordered.length / rrGroupSize);
-  const groupNames = Array.from({ length: groupCount }, (_, i) => rrGroupLabel(i, bracketLevel));
+  const groupNames = Array.from({ length: groupCount }, (_, i) => rrGroupLabel(i, bracketLevel, groupCount));
   const groups     = new Map<string, typeof participants>(groupNames.map(g => [g, []]));
   ordered.forEach((p, i) => groups.get(groupNames[i % groupCount])!.push(p));
 
@@ -609,7 +610,7 @@ export const startTournament = async (req: AuthRequest, res: Response, next: Nex
 
       const groupCount = Math.ceil(participants.length / groupSize);
       // bracketLevel is null here (no levels) → groups: G1, G2, G3 …
-      const groupNames = Array.from({ length: groupCount }, (_, i) => rrGroupLabel(i, null));
+      const groupNames = Array.from({ length: groupCount }, (_, i) => rrGroupLabel(i, null, groupCount));
 
       // Balanced round-robin assignment: deal cards to groups in order
       const groups = new Map<string, typeof participants[number][]>(
