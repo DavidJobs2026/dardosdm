@@ -6,6 +6,7 @@ import { z } from "zod";
 import { useAuthStore } from "@/store/auth.store";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import Image from "next/image";
 import toast from "react-hot-toast";
 import { Trophy, Mail, Lock, ChevronRight, MailCheck } from "lucide-react";
 import { useState } from "react";
@@ -63,11 +64,13 @@ export default function LoginPage() {
       <div className="hidden lg:flex lg:w-1/2 relative bg-ink-900 border-r border-ink-800
                       items-center justify-center overflow-hidden">
         {/* Background image — grayscale */}
-        <img
-          src="/darts-bg.jpg"
+        <Image
+          src="/darts-bg.webp"
           alt=""
-          aria-hidden="true"
-          className="absolute inset-0 w-full h-full object-cover grayscale opacity-60"
+          aria-hidden={true}
+          fill
+          sizes="50vw"
+          className="object-cover grayscale opacity-60"
         />
         {/* Dark overlay so text stays readable */}
         <div className="absolute inset-0 bg-ink-950/40" />

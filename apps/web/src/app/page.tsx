@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Image from "next/image";
 import { Trophy, Users, BarChart2, Zap, ChevronRight, Shield, Swords } from "lucide-react";
 
 export default function HomePage() {
@@ -28,14 +29,17 @@ export default function HomePage() {
       {/* ── Hero — imagen principal ─ */}
       <section className="relative min-h-[92vh] flex items-center justify-center text-center overflow-hidden">
 
-        {/* Imagen de fondo — diana anclada a la izquierda */}
-        <div
-          className="absolute inset-0"
+        {/* Imagen de fondo — priority activa preload automático, crítico para LCP */}
+        <Image
+          src="/hero-main.webp"
+          alt=""
+          fill
+          priority
+          quality={85}
+          sizes="100vw"
           style={{
-            backgroundImage: "url('/hero-main.jpg')",
-            backgroundRepeat: "no-repeat",
-            backgroundSize: "160% auto",
-            backgroundPosition: "60% 65%",
+            objectFit: "cover",
+            objectPosition: "60% 65%",
             filter: "grayscale(30%) brightness(0.45)",
           }}
         />
