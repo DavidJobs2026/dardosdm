@@ -35,8 +35,8 @@ const config: Config = {
         },
       },
       fontFamily: {
-        sans:    ["Plus Jakarta Sans", "system-ui", "sans-serif"],
-        display: ["Bebas Neue", "sans-serif"],
+        sans:    ["var(--font-jakarta)", "system-ui", "sans-serif"],
+        display: ["var(--font-bebas)", "sans-serif"],
         mono:    ["JetBrains Mono", "Fira Code", "monospace"],
       },
       boxShadow: {

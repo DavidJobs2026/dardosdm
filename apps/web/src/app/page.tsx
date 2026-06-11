@@ -4,6 +4,8 @@ import { Trophy, Users, BarChart2, Zap, ChevronRight, Shield, Swords } from "luc
 
 export default function HomePage() {
   return (
+    <>
+    <link rel="preload" as="image" href="/hero-main.webp" fetchPriority="high" />
     <div className="min-h-screen bg-ink-950 overflow-hidden">
 
       {/* ── Navbar ─────────────────────────────── */}
@@ -156,5 +158,6 @@ export default function HomePage() {
         </div>
       </footer>
     </div>
+    </>
   );
 }
