@@ -18,7 +18,7 @@ import {
   Trophy, Users, Calendar, Play, CheckCircle, BarChart2,
   UserPlus, Shuffle, ArrowLeft, Network, Trash2, Settings2,
   Banknote, CreditCard, Clock, ChevronDown, ChevronUp, ChevronLeft, ChevronRight,
-  RotateCcw, RefreshCw, X, Target, Pencil, Loader2, User,
+  RotateCcw, RefreshCw, X, Target, Pencil, Loader2, User, Zap,
 } from "lucide-react";
 import {
   SizeSelector, BestOfSelector, LevelBuilder, LevelData, SeasonSelector,
@@ -1545,6 +1545,73 @@ function getBracketLevels(matches: Match[], tournamentLevels: { name: string; or
   return named;
 }
 
+// ─── Bracket auto-assign button (elimination format) ─────────────────────────
+// Self-contained: loads dianas on mount, shows button only when there are free
+// dianas AND unassigned (unlaunched, both-players-present) bracket matches.
+function BracketAutoAssignButton({ tournamentId, bracketMatches, onDone }: {
+  tournamentId: string;
+  bracketMatches: Match[];
+  onDone: () => void;
+}) {
+  const [dianas,     setDianas]     = useState<any[]>([]);
+  const [assigning,  setAssigning]  = useState(false);
+
+  useEffect(() => {
+    api.get(`/tournaments/${tournamentId}/dianas`)
+      .then(r => setDianas(r.data.data ?? []))
+      .catch(() => {});
+  }, [tournamentId]);
+
+  const unassigned = bracketMatches.filter(
+    m => !m.rrGroup && !m.launch1At && m.participant1 && m.participant2
+      && !dianas.some((d: any) => d.matchId === m.id)
+  );
+  const free = dianas
+    .filter((d: any) => !d.matchId && !d.broken)
+    .sort((a: any, b: any) => a.number - b.number);
+
+  if (!unassigned.length || !free.length) return null;
+
+  const count = Math.min(unassigned.length, free.length);
+
+  const handleAutoAssign = async () => {
+    setAssigning(true);
+    try {
+      for (let i = 0; i < count; i++) {
+        await api.post(
+          `/tournaments/${tournamentId}/matches/${unassigned[i].id}/assign-diana`,
+          { dianaNumber: free[i].number },
+        );
+      }
+      toast.success(`${count} diana${count !== 1 ? "s" : ""} asignada${count !== 1 ? "s" : ""}`);
+      onDone();
+    } catch (err: any) {
+      toast.error(err.response?.data?.message ?? "Error al asignar dianas");
+    } finally {
+      setAssigning(false);
+    }
+  };
+
+  return (
+    <button
+      type="button"
+      disabled={assigning}
+      onClick={handleAutoAssign}
+      className={clsx(
+        "flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[10px] font-bold transition-all",
+        assigning
+          ? "bg-sky-900/30 text-sky-500 cursor-not-allowed"
+          : "bg-sky-700 hover:bg-sky-600 text-white",
+      )}
+    >
+      {assigning
+        ? <><RefreshCw className="w-3 h-3 animate-spin" /> Asignando…</>
+        : <><Zap className="w-3 h-3" /> Asignar dianas</>
+      }
+    </button>
+  );
+}
+
 type Tab = "bracket" | "participants" | "setup" | "standings" | "gestion";
 
 export default function TournamentDetailPage({ params }: { params: Promise<{ id: string }> }) {
@@ -2394,6 +2461,17 @@ export default function TournamentDetailPage({ params }: { params: Promise<{ id:
                     </button>
                   );
                 })}
+              </div>
+            )}
+
+            {/* Auto-assign dianas — only visible when bracket is live */}
+            {isOrganizer && bracket && (
+              <div className="flex justify-end">
+                <BracketAutoAssignButton
+                  tournamentId={id}
+                  bracketMatches={bracketMatches}
+                  onDone={loadData}
+                />
               </div>
             )}
 

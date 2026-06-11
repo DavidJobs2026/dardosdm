@@ -637,6 +637,7 @@ export function RRView({ tournament, matches, isOrganizer, hasKO = false, bracke
   // Auto-collapse the RR section once the KO bracket is live so it doesn't
   // dominate the screen, but the user can always expand it again.
   const [collapsed,        setCollapsed]        = useState(hasKO);
+  const [autoAssigning,    setAutoAssigning]    = useState(false);
 
   // ── Group-diana state ──────────────────────────────────────────────────────
   const [dianas,         setDianas]         = useState<Diana[]>([]);
@@ -673,6 +674,86 @@ export function RRView({ tournament, matches, isOrganizer, hasKO = false, bracke
   const handleUnassignDiana = (groupName: string, num: number) => {
     persistGroupDianas({ ...groupDianasMap, [groupName]: (groupDianasMap[groupName] ?? []).filter(n => n !== num) });
   };
+
+  // Auto-assign consecutive dianas to groups (skip already-assigned groups) then
+  // assign those dianas to the current-round pending matches within each group.
+  const handleAutoAssignDianas = useCallback(async () => {
+    setAutoAssigning(true);
+    try {
+      // Free = not active in a match, not broken, not reserved by this OR another level
+      let available = dianas
+        .filter(d => !d.matchId && !d.broken && !d.rrGroup && !otherLevelNums.has(d.number))
+        .map(d => d.number)
+        .sort((a, b) => a - b);
+
+      const newAssignments: Record<string, number[]> = {};
+      const sortedGroups = [...groups].sort((a, b) => a.name.localeCompare(b.name));
+
+      for (const group of sortedGroups) {
+        // Skip groups that already have dianas
+        if ((groupDianasMap[group.name] ?? []).length > 0) continue;
+
+        const needed = Math.floor(group.standings.length / 2);
+        if (needed === 0 || available.length < needed) continue;
+
+        if (needed === 1) {
+          newAssignments[group.name] = [available[0]];
+          available = available.slice(1);
+        } else {
+          // Find first consecutive run of `needed` diana numbers
+          let found: number[] | null = null;
+          for (let i = 0; i <= available.length - needed; i++) {
+            let ok = true;
+            for (let j = 1; j < needed; j++) {
+              if (available[i + j] !== available[i] + j) { ok = false; break; }
+            }
+            if (ok) { found = available.slice(i, i + needed); break; }
+          }
+          // Fallback: take the next `needed` free dianas even if non-consecutive
+          const picked = found ?? available.slice(0, needed);
+          newAssignments[group.name] = picked;
+          available = available.filter(n => !picked.includes(n));
+        }
+      }
+
+      if (Object.keys(newAssignments).length === 0) {
+        toast.error("No hay dianas libres para asignar");
+        return;
+      }
+
+      // 1. Persist group reservations
+      await persistGroupDianas({ ...groupDianasMap, ...newAssignments });
+
+      // 2. Assign each diana to the current-round pending match in its group
+      for (const [groupName, dianaNums] of Object.entries(newAssignments)) {
+        const group = sortedGroups.find(g => g.name === groupName);
+        if (!group) continue;
+
+        const pending = group.matches
+          .filter(m => !m.launch1At && m.status !== "completed" && m.status !== "bye")
+          .sort((a, b) => a.round !== b.round ? a.round - b.round : a.position - b.position);
+
+        if (pending.length === 0) continue;
+        const minRound   = pending[0].round;
+        const curMatches = pending.filter(m => m.round === minRound);
+
+        for (let i = 0; i < Math.min(curMatches.length, dianaNums.length); i++) {
+          await api.post(
+            `/tournaments/${tournament.id}/matches/${curMatches[i].id}/assign-diana`,
+            { dianaNumber: dianaNums[i] },
+          );
+        }
+      }
+
+      const n = Object.keys(newAssignments).length;
+      toast.success(`Dianas asignadas a ${n} grupo${n !== 1 ? "s" : ""}`);
+      onDataChange();
+    } catch (err: any) {
+      toast.error(err.response?.data?.message ?? "Error al asignar dianas");
+    } finally {
+      setAutoAssigning(false);
+    }
+  }, [dianas, groups, groupDianasMap, otherLevelNums, tournament.id, persistGroupDianas, onDataChange]);
 
   const advancingCount = tournament.rrAdvancingTeams ?? 2;
 
@@ -750,10 +831,32 @@ export function RRView({ tournament, matches, isOrganizer, hasKO = false, bracke
           }
         </button>
         {!collapsed && (
-          <button type="button" onClick={loadStandings} disabled={loading}
-            className="text-ink-600 hover:text-ink-300 transition-colors p-1.5 rounded-lg hover:bg-ink-800" title="Actualizar">
-            <RefreshCw className={clsx("w-3.5 h-3.5", loading && "animate-spin")} />
-          </button>
+          <div className="flex items-center gap-2">
+            {/* Auto-assign: only visible when organizer + groups exist + free dianas available */}
+            {isOrganizer && groups.length > 0 &&
+             dianas.some(d => !d.matchId && !d.broken && !d.rrGroup && !otherLevelNums.has(d.number)) && (
+              <button
+                type="button"
+                disabled={autoAssigning}
+                onClick={handleAutoAssignDianas}
+                className={clsx(
+                  "flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[10px] font-bold transition-all",
+                  autoAssigning
+                    ? "bg-sky-900/30 text-sky-500 cursor-not-allowed"
+                    : "bg-sky-700 hover:bg-sky-600 text-white"
+                )}
+              >
+                {autoAssigning
+                  ? <><RefreshCw className="w-3 h-3 animate-spin" /> Asignando…</>
+                  : <><Zap className="w-3 h-3" /> Asignar dianas</>
+                }
+              </button>
+            )}
+            <button type="button" onClick={loadStandings} disabled={loading}
+              className="text-ink-600 hover:text-ink-300 transition-colors p-1.5 rounded-lg hover:bg-ink-800" title="Actualizar">
+              <RefreshCw className={clsx("w-3.5 h-3.5", loading && "animate-spin")} />
+            </button>
+          </div>
         )}
       </div>
 
