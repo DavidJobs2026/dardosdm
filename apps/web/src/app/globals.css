@@ -7,12 +7,12 @@
 
   body {
     @apply bg-ink-950 text-white antialiased;
-    font-family: "Plus Jakarta Sans", system-ui, sans-serif;
+    font-family: var(--font-jakarta), system-ui, sans-serif;
   }
 
   /* Bebas Neue for headings — bold, condensed, sports feel */
   h1, h2, h3, h4, h5, h6 {
-    font-family: "Bebas Neue", sans-serif;
+    font-family: var(--font-bebas), sans-serif;
     letter-spacing: 0.04em;
     text-transform: uppercase;
     line-height: 1.05;
