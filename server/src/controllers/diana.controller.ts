@@ -528,7 +528,10 @@ export const noShowMatch = (io: SocketServer) =>
         reason: z.string().max(500).optional(),
       }).parse(req.body);
 
-      const tournament = await prisma.tournament.findUnique({ where: { id: req.params.id }, include: { coOrganizers: { select: selectCoOrg } } });
+      const tournament = await prisma.tournament.findUnique({
+        where:   { id: req.params.id },
+        include: { coOrganizers: { select: selectCoOrg }, levels: true },
+      });
       if (!tournament) return next(notFound("Tournament"));
       if (!canManageTournament(tournament, req)) return next(forbidden());
 
@@ -553,10 +556,21 @@ export const noShowMatch = (io: SocketServer) =>
       const winnerId = noShowPlayerId === match.participant1Id ? match.participant2Id : match.participant1Id;
       if (!winnerId) return next(badRequest("No se puede determinar el ganador"));
 
+      // Compute winner's score: ceil(bestOf / 2) — e.g. BO3 → 2-0, BO5 → 3-0
+      const levelConfig = (tournament.levels as Array<{ name: string | null; bestOf: number | null }>)
+        .find(l => l.name === match.bracketLevel);
+      const effectiveBestOf = (tournament as any).winnerOnly
+        ? null
+        : (levelConfig?.bestOf ?? (tournament as any).bestOf ?? 3);
+      const winnerScore = effectiveBestOf != null ? Math.ceil(effectiveBestOf / 2) : null;
+      const p1IsWinner  = winnerId === match.participant1Id;
+      const score1      = winnerScore != null ? (p1IsWinner ? winnerScore : 0) : null;
+      const score2      = winnerScore != null ? (p1IsWinner ? 0 : winnerScore) : null;
+
       // Mark no-show + complete
       const updated = await prisma.match.update({
         where: { id: match.id },
-        data: { noShowAt: now, noShowReason: reason, winnerId, status: "completed", playedAt: now },
+        data: { noShowAt: now, noShowReason: reason, winnerId, status: "completed", playedAt: now, score1, score2 },
       });
 
       // Free the diana
