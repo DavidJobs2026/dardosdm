@@ -2,6 +2,13 @@
   "version": "0.0.1",
   "configurations": [
     {
+      "name": "tournament-web",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev"],
+      "cwd": "/Users/davidjimenezrodriguez/tournament-app/apps/web",
+      "port": 3000
+    },
+    {
       "name": "email-preview",
       "runtimeExecutable": "npx",
       "runtimeArgs": ["serve", "-s", ".claude", "-p", "5555", "--no-clipboard"],
