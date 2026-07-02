@@ -32,6 +32,9 @@ router.get("/status", authenticate, requireRole("admin"), (_req, res) => {
     lastBackupAt,
     lastBackupStatus,
     backupEmail: process.env.BACKUP_EMAIL ?? "(no configurado — añade BACKUP_EMAIL en Railway)",
+    encryption: process.env.BACKUP_PASSPHRASE
+      ? "AES-256 activado"
+      : "⚠️ SIN CIFRAR — añade BACKUP_PASSPHRASE en Railway (los backups no se envían hasta configurarla)",
     schedule: "Automático cada noche a las 03:00 (hora España)",
   });
 });
