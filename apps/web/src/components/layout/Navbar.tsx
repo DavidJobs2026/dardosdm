@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { Trophy, LogOut, LayoutDashboard, Menu, X, Database, Target, MonitorX, KeyRound, Eye, EyeOff, Bell, BellOff } from "lucide-react";
+import { Trophy, LogOut, LayoutDashboard, Menu, X, Database, Target, MonitorX, KeyRound, Eye, EyeOff, Bell, BellOff, Trash2, AlertTriangle } from "lucide-react";
 import { useAuthStore } from "@/store/auth.store";
 import { clsx } from "clsx";
 import { useRef, useState, useEffect } from "react";
@@ -61,6 +61,28 @@ export function Navbar() {
       toast.error(err.response?.data?.message || "Error al cambiar la contraseña");
     } finally {
       setSavingPw(false);
+    }
+  };
+
+  // ── Delete account modal (GDPR) ──────────────────────────────────────────────
+  const [showDeleteAcc, setShowDeleteAcc] = useState(false);
+  const [deletePw,      setDeletePw]      = useState("");
+  const [showDeletePw,  setShowDeletePw]  = useState(false);
+  const [deleting,      setDeleting]      = useState(false);
+
+  const handleDeleteAccount = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setDeleting(true);
+    try {
+      await api.delete("/users/me", { data: { password: deletePw } });
+      setShowDeleteAcc(false);
+      toast.success("Tu cuenta ha sido eliminada");
+      await logout();
+      router.push("/");
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || "Error al eliminar la cuenta");
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -208,6 +230,14 @@ export function Navbar() {
                         <MonitorX className="w-4 h-4" />
                         Cerrar todos los dispositivos
                       </button>
+                      <div className="border-t border-ink-800" />
+                      <button
+                        onClick={() => { setUserMenu(false); setShowDeleteAcc(true); }}
+                        className="flex items-center gap-2.5 w-full px-4 py-3 text-sm text-red-500/80
+                                   hover:bg-red-900/20 hover:text-red-400 transition-colors text-left">
+                        <Trash2 className="w-4 h-4" />
+                        Eliminar mi cuenta
+                      </button>
                     </div>
                   )}
                 </div>
@@ -312,6 +342,58 @@ export function Navbar() {
                   className="flex-1 py-2.5 rounded-xl bg-red-600 hover:bg-red-500 text-white text-sm font-bold
                              transition-colors disabled:opacity-50">
                   {savingPw ? "Guardando…" : "Guardar"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Delete account modal (GDPR right to erasure) */}
+      {showDeleteAcc && (
+        <div className="fixed inset-0 z-[300] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
+          <div className="w-full max-w-sm bg-ink-900 border border-red-900/60 rounded-2xl shadow-2xl overflow-hidden">
+            <div className="flex items-center justify-between px-6 pt-6 pb-4 border-b border-ink-800">
+              <div className="flex items-center gap-2">
+                <AlertTriangle className="w-5 h-5 text-red-500" />
+                <h2 className="text-white font-bold text-base">Eliminar mi cuenta</h2>
+              </div>
+              <button onClick={() => { setShowDeleteAcc(false); setDeletePw(""); }}
+                className="text-ink-500 hover:text-white transition-colors">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <form onSubmit={handleDeleteAccount} className="px-6 py-5 space-y-4">
+              <div className="rounded-xl border border-red-900/50 bg-red-950/30 p-3.5 text-xs text-red-200/90 leading-relaxed space-y-1.5">
+                <p className="font-bold text-red-300">Esta acción es permanente y no se puede deshacer.</p>
+                <p>Se eliminarán tus datos personales (email, DNI, teléfono) y tus sesiones.</p>
+                <p>Los resultados de torneos ya jugados se conservan de forma anónima.</p>
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-ink-400 mb-1.5 uppercase tracking-wide">
+                  Confirma con tu contraseña
+                </label>
+                <div className="relative">
+                  <input value={deletePw} onChange={e => setDeletePw(e.target.value)}
+                    type={showDeletePw ? "text" : "password"} autoFocus required
+                    className="w-full px-3.5 py-2.5 bg-ink-950 border border-ink-700 rounded-xl text-white
+                               text-sm focus:outline-none focus:border-red-500/60 transition-all pr-10" />
+                  <button type="button" onClick={() => setShowDeletePw(v => !v)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-ink-500 hover:text-white transition-colors">
+                    {showDeletePw ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+              </div>
+              <div className="flex gap-3 pt-1">
+                <button type="button" onClick={() => { setShowDeleteAcc(false); setDeletePw(""); }}
+                  className="flex-1 py-2.5 rounded-xl border border-ink-700 text-ink-400 text-sm font-semibold
+                             hover:text-white hover:border-ink-500 transition-colors">
+                  Cancelar
+                </button>
+                <button type="submit" disabled={deleting || !deletePw}
+                  className="flex-1 py-2.5 rounded-xl bg-red-700 hover:bg-red-600 text-white text-sm font-bold
+                             transition-colors disabled:opacity-50">
+                  {deleting ? "Eliminando…" : "Eliminar definitivamente"}
                 </button>
               </div>
             </form>

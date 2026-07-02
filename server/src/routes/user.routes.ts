@@ -1,5 +1,5 @@
 import { IRouter, Router } from "express";
-import { searchUsers, getMyProfile, batchCreateUsers, findOrCreatePlayer, listPlayers, listUsers, listOrganizers, updateUserRole, updateUserName, updateUserPassword, updateUserProfile, resetPasswordToDni, deleteUser, getAuditLogs, clearAuditLogs, absorbGhost, ghostPreview } from "../controllers/user.controller";
+import { searchUsers, getMyProfile, batchCreateUsers, findOrCreatePlayer, listPlayers, listUsers, listOrganizers, updateUserRole, updateUserName, updateUserPassword, updateUserProfile, resetPasswordToDni, deleteUser, deleteMyAccount, getAuditLogs, clearAuditLogs, absorbGhost, ghostPreview } from "../controllers/user.controller";
 import { authenticate } from "../middlewares/auth.middleware";
 
 const router: IRouter = Router();
@@ -13,6 +13,7 @@ router.patch("/:id/profile",       authenticate, updateUserProfile);
 router.post("/:id/reset-password", authenticate, resetPasswordToDni);
 router.get("/search",              authenticate, searchUsers);
 router.get("/me/profile",          authenticate, getMyProfile);
+router.delete("/me",               authenticate, deleteMyAccount);   // must precede DELETE /:id
 router.post("/batch-create",       authenticate, batchCreateUsers);
 router.post("/find-or-create",     authenticate, findOrCreatePlayer);
 router.patch("/:id/role",          authenticate, updateUserRole);

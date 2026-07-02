@@ -634,6 +634,62 @@ export const deleteUser = async (req: AuthRequest, res: Response, next: NextFunc
   } catch (err) { next(err); }
 };
 
+/** DELETE /users/me — self-service account deletion (GDPR right to erasure).
+ *  Requires password re-authentication. Completed-tournament history survives
+ *  anonymized (Participant.userId → null via FK, dni stripped explicitly). */
+export const deleteMyAccount = async (req: AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    const userId = req.user!.userId;
+    const { password } = z.object({
+      password: z.string().min(1, "Introduce tu contraseña"),
+    }).parse(req.body);
+
+    const user = await prisma.user.findUnique({
+      where:  { id: userId },
+      select: { id: true, passwordHash: true },
+    });
+    if (!user) return next(notFound("Usuario"));
+
+    const valid = await bcrypt.compare(password, user.passwordHash);
+    if (!valid) return next(badRequest("Contraseña incorrecta"));
+
+    // Tournament.createdById is a restrictive FK — deleting would fail anyway.
+    const createdTournaments = await prisma.tournament.count({ where: { createdById: userId } });
+    if (createdTournaments > 0) {
+      return next(badRequest(
+        "Tu cuenta ha creado torneos y no puede autoeliminarse. Contacta con el administrador."
+      ));
+    }
+
+    // Deleting mid-tournament would leave anonymous slots in a live bracket.
+    const activeParticipations = await prisma.participant.count({
+      where: { userId, tournament: { status: "in_progress" } },
+    });
+    if (activeParticipations > 0) {
+      return next(badRequest(
+        "Estás participando en un torneo en curso. Espera a que termine o pide al organizador que te retire."
+      ));
+    }
+
+    // Erasure proof — recorded WITHOUT name/email/dni (only the opaque id survives)
+    await audit({ req, action: "user.self_delete", entityType: "user", entityId: userId });
+
+    await prisma.$transaction([
+      // Inscriptions in tournaments that haven't started have no matches referencing them
+      prisma.participant.deleteMany({
+        where: { userId, tournament: { status: { in: ["draft", "registration"] } } },
+      }),
+      // Finished-tournament history: strip PII, keep anonymized results
+      prisma.participant.updateMany({ where: { userId }, data: { dni: null } }),
+      // Cascades: refresh tokens, push subscriptions, team memberships; audit logs → SetNull
+      prisma.user.delete({ where: { id: userId } }),
+    ]);
+
+    invalidateUserCache(userId);
+    return res.json({ data: null, message: "Cuenta eliminada definitivamente" });
+  } catch (err) { next(err); }
+};
+
 /** GET /users/:id/ghost-preview — returns the ghost account data before merging */
 export const ghostPreview = async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {

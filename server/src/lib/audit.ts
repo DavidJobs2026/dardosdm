@@ -26,6 +26,7 @@ export type AuditAction =
   | "user.batch_create"    // bulk player creation from historico
   | "user.role_change"
   | "user.reset_password"
+  | "user.self_delete"     // GDPR erasure — record kept without PII as deletion proof
   | "user.ban";
 
 interface AuditParams {
