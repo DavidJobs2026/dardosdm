@@ -1,7 +1,17 @@
 packages:
-  - "apps/*"
+  - "apps/web"
+  # apps/mobile (React Native / React 18) is intentionally excluded from the
+  # workspace: sharing the pnpm store with the React 19 web app pulled a second
+  # @types/react@18 into the type graph, breaking JSX type-checking (phantom
+  # "Suspense cannot be used as a JSX component" errors). Re-add it — or run its
+  # own isolated install — if/when mobile development resumes.
   - "packages/*"
   - "server"
+overrides:
+  # Pin React 19 type defs to one exact version so no transitive dep can drag in
+  # a second @types/react and reintroduce the JSX type-graph conflict.
+  "@types/react": "19.2.3"
+  "@types/react-dom": "19.2.3"
 allowBuilds:
   '@prisma/client': true
   '@prisma/engines': true

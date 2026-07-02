@@ -46,9 +46,9 @@ const nextConfig: NextConfig = {
   env: {
     NEXT_PUBLIC_COMMIT_SHA: (process.env.RAILWAY_GIT_COMMIT_SHA ?? "local").slice(0, 7),
   },
-  // Type errors in monorepo context are false positives from pnpm's virtual store
-  // creating duplicate @types/react instances — code is functionally correct
-  typescript: { ignoreBuildErrors: true },
+  // TypeScript errors now fail the build (the duplicate @types/react that caused
+  // phantom errors was removed by excluding the React-Native app from the pnpm
+  // workspace — see pnpm-workspace.yaml).
   eslint: { ignoreDuringBuilds: true },
   transpilePackages: ["@tournament/types"],
   async headers() {
