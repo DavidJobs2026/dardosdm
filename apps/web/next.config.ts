@@ -51,6 +51,18 @@ const nextConfig: NextConfig = {
   // workspace — see pnpm-workspace.yaml).
   eslint: { ignoreDuringBuilds: true },
   transpilePackages: ["@tournament/types"],
+  // ─── Same-origin API proxy ────────────────────────────────────────────────
+  // The browser calls /api/* on THIS origin; Next forwards it to the backend
+  // server-side. This makes the httpOnly refresh cookie a FIRST-party cookie
+  // (frontend and API share the same origin from the browser's view), so it
+  // survives page reloads even in browsers that block third-party cookies
+  // (Safari ITP, Chrome's third-party-cookie phase-out). WebSockets stay direct
+  // to the backend — Socket.IO authenticates with the access token, not the cookie.
+  async rewrites() {
+    return [
+      { source: "/api/:path*", destination: `${API_ORIGIN}/api/:path*` },
+    ];
+  },
   async headers() {
     return [{ source: "/(.*)", headers: securityHeaders }];
   },

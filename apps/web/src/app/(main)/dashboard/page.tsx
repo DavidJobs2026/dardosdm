@@ -1552,6 +1552,7 @@ function AuditLogPanel() {
 // ─── Main page ────────────────────────────────────────────────────────────────
 export default function DashboardPage() {
   const { user } = useAuthStore();
+  const authInitialized = useAuthStore((s) => s.authInitialized);
   const router   = useRouter();
   const [tournaments,  setTournaments]  = useState<Tournament[]>([]);
   const [loading,      setLoading]      = useState(true);
@@ -1563,6 +1564,9 @@ export default function DashboardPage() {
   const roleMenuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
+    // Wait for the cookie→token bootstrap to finish before judging the session —
+    // otherwise a page reload sees user=null mid-refresh and wrongly bounces to login.
+    if (!authInitialized) return;
     if (!user) { router.push("/auth/login"); return; }
     if (user.role === "player") { router.push("/torneos"); return; }
     // limit=100 (backend max) so the stats cards and "Mis torneos" list aren't
@@ -1571,7 +1575,7 @@ export default function DashboardPage() {
       .then(({ data }) => setTournaments(data.data))
       .catch(() => toast.error("Error cargando torneos"))
       .finally(() => setLoading(false));
-  }, [user, router]);
+  }, [user, authInitialized, router]);
 
   // Close dropdown on outside click
   useEffect(() => {

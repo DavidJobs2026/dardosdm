@@ -185,6 +185,7 @@ function TournamentCard({
 
 export default function TorneosPage() {
   const { user } = useAuthStore();
+  const authInitialized = useAuthStore((s) => s.authInitialized);
   const router = useRouter();
   const [tournaments, setTournaments] = useState<(Tournament & { _inscriptionStatus?: "none" | "pending" | "confirmed" })[]>([]);
   const [loading, setLoading] = useState(true);
@@ -192,6 +193,9 @@ export default function TorneosPage() {
   const { isSupported, isSubscribed, isLoading: pushLoading, subscribe, needsInstall } = usePushNotifications();
 
   useEffect(() => {
+    // Wait for the cookie→token bootstrap before redirecting, so a reload doesn't
+    // bounce to login while the session is still being restored.
+    if (!authInitialized) return;
     if (!user) {
       router.push("/auth/login");
       return;
@@ -241,7 +245,7 @@ export default function TorneosPage() {
     };
 
     loadTournaments();
-  }, [user, router]);
+  }, [user, authInitialized, router]);
 
   if (!user || user.role !== "player") return null;
 

@@ -1,7 +1,12 @@
 import axios from "axios";
 import { getAccessToken, setAccessToken } from "./token";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api/v1";
+// Same-origin relative base: the browser hits /api/v1 on THIS origin and Next.js
+// rewrites (see next.config.ts) proxy it to the backend. Keeping it same-origin
+// makes the httpOnly refresh cookie first-party so the session survives reloads
+// even where third-party cookies are blocked (Safari, Chrome). WebSockets still
+// use NEXT_PUBLIC_WS_URL directly (they auth with the access token, not the cookie).
+const API_URL = "/api/v1";
 
 export const api = axios.create({
   baseURL: API_URL,
