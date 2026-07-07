@@ -1600,6 +1600,17 @@ export const getPendingInscriptions = async (req: AuthRequest, res: Response, ne
       where: { tournamentId: req.params.id, inscriptionStatus: { in: ["pending", "pending_web"] } },
       include: {
         user: { select: { id: true, name: true, email: true, phone: true, province: true, dni: true } },
+        team: {
+          select: {
+            id: true, name: true,
+            members: {
+              select: {
+                role: true, metricValue: true, gamesPlayed: true,
+                user: { select: { id: true, name: true } },
+              },
+            },
+          },
+        },
       },
       orderBy: { registeredAt: "asc" },
     });

@@ -253,32 +253,43 @@ function ParticipantRow({
               )}
             </div>
 
-            {/* ── Line 2: team member names + metrics ── */}
+            {/* ── Line 2: team member names + metrics (SUM) + low-games warning ── */}
             {participant.team?.members && participant.team.members.length > 0 && (() => {
               const vals = participant.team.members
                 .map(m => m.metricValue)
                 .filter((v): v is number => v != null);
-              const avg = vals.length > 0
-                ? vals.reduce((a, b) => a + b, 0) / vals.length
+              const sum = vals.length > 0
+                ? vals.reduce((a, b) => a + b, 0)
                 : null;
+              const lowGamesMembers = participant.team!.members.filter(
+                (m: any) => m.gamesPlayed != null && m.gamesPlayed < 18
+              );
               return (
-                <div className="flex items-center gap-1 min-w-0 mt-0.5">
-                  <p className="text-[10px] text-ink-400 truncate">
-                    {participant.team!.members.map(m =>
-                      m.metricValue != null
-                        ? `${m.user.name} (${m.metricValue.toFixed(2)})`
-                        : m.user.name
-                    ).join(" · ")}
-                  </p>
-                  {avg != null && (
-                    <>
-                      <span className="text-ink-700 shrink-0 text-[10px]">·</span>
-                      <span className="text-[10px] text-ink-500 shrink-0">
-                        {metricLbl} <span className="text-ink-300 font-semibold">{avg.toFixed(2)}</span>
-                      </span>
-                    </>
+                <>
+                  <div className="flex items-center gap-1 min-w-0 mt-0.5">
+                    <p className="text-[10px] text-ink-400 truncate">
+                      {participant.team!.members.map(m =>
+                        m.metricValue != null
+                          ? `${m.user.name} (${m.metricValue.toFixed(2)})`
+                          : m.user.name
+                      ).join(" · ")}
+                    </p>
+                    {sum != null && (
+                      <>
+                        <span className="text-ink-700 shrink-0 text-[10px]">·</span>
+                        <span className="text-[10px] text-ink-500 shrink-0">
+                          Σ {metricLbl} <span className="text-ink-300 font-semibold">{sum.toFixed(2)}</span>
+                        </span>
+                      </>
+                    )}
+                  </div>
+                  {lowGamesMembers.length > 0 && (
+                    <p className="flex items-center gap-1 text-[10px] text-amber-400 mt-0.5">
+                      <span aria-hidden>⚠</span>
+                      Revisar: {lowGamesMembers.map((m: any) => `${m.user.name} (${m.gamesPlayed}p)`).join(", ")} · menos de 18 partidas
+                    </p>
                   )}
-                </div>
+                </>
               );
             })()}
 
@@ -2674,13 +2685,22 @@ export default function TournamentDetailPage({ params }: { params: Promise<{ id:
               ) : (
                 <div className="space-y-3">
                   {pendingInscriptions.map((insc: any) => {
-                    const isOrphaned = !insc.user;
+                    const isTeam     = !!insc.team;
+                    const isOrphaned = !insc.user && !insc.team;
+                    const teamMembers = insc.team?.members ?? [];
+                    const teamSum = teamMembers
+                      .map((m: any) => m.metricValue)
+                      .filter((v: any) => v != null)
+                      .reduce((a: number, b: number) => a + b, 0);
+                    const lowGamesMembers = teamMembers.filter((m: any) => m.gamesPlayed != null && m.gamesPlayed < 18);
                     return (
                     <div key={insc.id}
                       className={`flex items-center justify-between gap-4 px-4 py-3 rounded-xl border ${isOrphaned ? "bg-red-950/20 border-red-800/40" : "bg-ink-800/50 border-ink-700"}`}>
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-2 flex-wrap">
-                          {isOrphaned ? (
+                          {isTeam ? (
+                            <p className="text-white font-semibold text-sm truncate">{insc.team.name}</p>
+                          ) : isOrphaned ? (
                             <p className="text-red-400 font-semibold text-sm truncate italic">Usuario eliminado</p>
                           ) : (
                             <p className="text-white font-semibold text-sm truncate">{insc.user.name}</p>
@@ -2691,7 +2711,27 @@ export default function TournamentDetailPage({ params }: { params: Promise<{ id:
                             </span>
                           )}
                         </div>
-                        {isOrphaned ? (
+                        {isTeam ? (
+                          <>
+                            <p className="text-ink-400 text-xs mt-1 truncate">
+                              {teamMembers.map((m: any) =>
+                                m.metricValue != null ? `${m.user.name} (${m.metricValue.toFixed(2)})` : m.user.name
+                              ).join(" · ")}
+                            </p>
+                            <div className="flex items-center gap-2 mt-1 flex-wrap">
+                              {teamMembers.some((m: any) => m.metricValue != null) && (
+                                <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-amber-300 bg-amber-900/20 border border-amber-700/30 px-1.5 py-0.5 rounded">
+                                  Σ {teamSum.toFixed(2)}
+                                </span>
+                              )}
+                              {lowGamesMembers.length > 0 && (
+                                <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-amber-400">
+                                  ⚠ Revisar: {lowGamesMembers.map((m: any) => `${m.user.name} (${m.gamesPlayed}p)`).join(", ")} · &lt;18 partidas
+                                </span>
+                              )}
+                            </div>
+                          </>
+                        ) : isOrphaned ? (
                           <p className="text-red-600 text-xs italic">La cuenta fue eliminada — solo se puede rechazar</p>
                         ) : (
                           <>

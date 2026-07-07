@@ -1,5 +1,7 @@
 import { Response, NextFunction } from "express";
 import { z } from "zod";
+import crypto from "crypto";
+import bcrypt from "bcryptjs";
 import { prisma } from "../lib/prisma";
 import { AuthRequest } from "../middlewares/auth.middleware";
 import { notFound, forbidden, badRequest } from "../utils/errors";
@@ -25,6 +27,7 @@ const INCLUDE_PARTICIPANT = {
         select: {
           role:        true,
           metricValue: true,
+          gamesPlayed: true,
           user: { select: { id: true, name: true, avatarUrl: true, elo: true } },
         },
       },
@@ -244,10 +247,14 @@ export const addParticipant = async (req: AuthRequest, res: Response, next: Next
 const addGroupSchema = z.object({
   groupName:     z.string().min(1),
   playerIds:     z.array(z.string()).min(2).max(7),
-  metricValues:  z.record(z.string(), z.number()).optional(), // userId → metric
+  metricValues:  z.record(z.string(), z.number()).optional(),         // userId → metric
+  gamesValues:   z.record(z.string(), z.number().int()).optional(),   // userId → games played
   paymentStatus: z.enum(["pending", "paid"]).optional(),
   paymentMethod: z.enum(["cash", "card"]).nullable().optional(),
 });
+
+// Minimum games below which a player is flagged for organizer review.
+export const MIN_GAMES_FOR_REVIEW = 18;
 
 export const addGroupParticipant = async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
@@ -268,7 +275,7 @@ export const addGroupParticipant = async (req: AuthRequest, res: Response, next:
       return next(badRequest("El torneo está completo"));
     }
 
-    const { groupName, playerIds, metricValues, paymentStatus, paymentMethod } = addGroupSchema.parse(req.body);
+    const { groupName, playerIds, metricValues, gamesValues, paymentStatus, paymentMethod } = addGroupSchema.parse(req.body);
 
     // Validate expected group size (min–max range for equipos, exact for parejas/trios)
     const expectedMax = tournament.participantType === "parejas" ? 2
@@ -337,8 +344,10 @@ export const addGroupParticipant = async (req: AuthRequest, res: Response, next:
       memberMetricMap.set(uid, val);
     }
 
-    // ── Effective team metric: average of top-N players by metric ─────────────
-    // metricPlayers controls how many top players are counted (null = all filled players)
+    // ── Effective team metric: SUM of the top-N players by metric ─────────────
+    // metricPlayers controls how many top players count (null = all filled players).
+    // The limit is checked against the SUM (not the average): e.g. two players of
+    // 50 + 50 = 100, which is what the tournament maxMetric is compared against.
     const metricN = tournament.metricPlayers ?? playerIds.length;
     const knownVals = playerIds
       .map(uid => memberMetricMap.get(uid) ?? null)
@@ -347,18 +356,17 @@ export const addGroupParticipant = async (req: AuthRequest, res: Response, next:
       .slice(0, metricN);             // top-N
 
     const storedMetric: number | null = knownVals.length > 0
-      ? Math.round((knownVals.reduce((a, b) => a + b, 0) / knownVals.length) * 100) / 100
+      ? Math.round(knownVals.reduce((a, b) => a + b, 0) * 100) / 100
       : null;
 
-    // ── Max metric check (against team average) ────────────────────────────────
+    // ── Max metric check (against the team's SUMMED metric) ────────────────────
     if (effectiveMax != null && knownVals.length === Math.min(metricN, playerIds.length) && storedMetric != null && storedMetric > effectiveMax) {
-      const names = users.map((u: { name: string }) => u.name).join(" & ");
       return next(badRequest(
-        `La media del equipo (${storedMetric.toFixed(2)}) supera el límite del torneo (${effectiveMax.toFixed(2)})`
+        `La suma de medias del equipo (${storedMetric.toFixed(2)}) supera el límite del torneo (${effectiveMax.toFixed(2)})`
       ));
     }
 
-    // Create Team + TeamMembers (with individual metric per member)
+    // Create Team + TeamMembers (individual metric + games per member)
     const team = await prisma.team.create({
       data: {
         name:       groupName,
@@ -368,6 +376,7 @@ export const addGroupParticipant = async (req: AuthRequest, res: Response, next:
             userId:      uid,
             role:        idx === 0 ? "captain" : "member",
             metricValue: memberMetricMap.get(uid) ?? null,
+            gamesPlayed: gamesValues?.[uid] ?? null,
           })),
         },
       },
@@ -390,6 +399,216 @@ export const addGroupParticipant = async (req: AuthRequest, res: Response, next:
   } catch (err) {
     next(err);
   }
+};
+
+// ─── playerInscribeGroup: player self-inscribes a full pair/group ──────────────
+// The player picks their partner(s) from the historical player database (each
+// carries its combined metric + games). The server resolves each partner to a
+// real or ghost user account, creates the team, checks the SUMMED metric limit,
+// and files the inscription as pending_web (awaiting organizer approval).
+
+const playerGroupSchema = z.object({
+  partners: z.array(z.object({
+    name:        z.string().min(1),
+    dni:         z.string().optional(),
+    metricValue: z.number().optional(),
+    gamesPlayed: z.number().int().optional(),
+  })).min(1).max(6),
+  groupName: z.string().optional(),
+});
+
+/** Resolve a player record (name + optional dni) to a real or ghost user account. */
+async function findOrCreateUserByRecord(name: string, dni?: string | null): Promise<{ id: string; name: string }> {
+  let user: { id: string; name: string } | null = null;
+
+  if (dni) {
+    const dniNorm = dni.trim().toUpperCase();
+    user = await prisma.user.findFirst({
+      where:  { dni: dniNorm, NOT: { email: { endsWith: "@torneo.local" } } },
+      select: { id: true, name: true },
+    });
+    if (!user) {
+      const slug = dniNorm.toLowerCase().replace(/[^a-z0-9]/g, "");
+      user = await prisma.user.findFirst({ where: { email: `${slug}@torneo.local` }, select: { id: true, name: true } });
+    }
+  }
+  if (!user) {
+    user = await prisma.user.findFirst({
+      where:  { name: { equals: name.trim(), mode: "insensitive" }, NOT: { email: { endsWith: "@torneo.local" } } },
+      select: { id: true, name: true },
+    }) ?? await prisma.user.findFirst({
+      where:  { name: { equals: name.trim(), mode: "insensitive" } },
+      select: { id: true, name: true },
+    });
+  }
+  if (!user) {
+    const emailSlug = dni
+      ? dni.trim().toLowerCase().replace(/[^a-z0-9]/g, "")
+      : name.trim().toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "")
+          .replace(/[^a-z0-9\s]/g, "").trim().split(/\s+/).slice(0, 3).join(".");
+    const email  = `${emailSlug || "jugador"}.${crypto.randomBytes(3).toString("hex")}@torneo.local`;
+    const passwordHash = await bcrypt.hash(crypto.randomBytes(32).toString("hex"), 12);
+    user = await prisma.user.create({
+      data:   { name: name.trim().toUpperCase(), email, passwordHash },
+      select: { id: true, name: true },
+    });
+  }
+  return user;
+}
+
+export const playerInscribeGroup = async (req: AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    if (req.user!.role !== "player") return next(forbidden("Solo jugadores pueden auto-inscribirse"));
+
+    const tournament = await prisma.tournament.findUnique({
+      where:   { id: req.params.id },
+      include: { _count: { select: { participants: true } }, levels: true },
+    });
+    if (!tournament) return next(notFound("Tournament"));
+    if (!tournament.allowPlayerReg) return next(forbidden("Este torneo no acepta inscripciones de jugadores"));
+    if (tournament.status !== "registration") return next(badRequest("Las inscripciones no están abiertas"));
+    if (!isGroupType(tournament.participantType)) return next(badRequest("Este torneo no es de parejas ni de grupos"));
+    if (tournament.maxParticipants > 0 && tournament._count.participants >= tournament.maxParticipants) {
+      return next(badRequest("El torneo está completo"));
+    }
+
+    const { partners, groupName } = playerGroupSchema.parse(req.body);
+
+    // ── Expected group size ────────────────────────────────────────────────────
+    const expectedMax = tournament.participantType === "parejas" ? 2
+      : tournament.participantType === "trios" ? 3
+      : (tournament.teamSize ?? 4);
+    const expectedMin = tournament.participantType === "equipos"
+      ? ((tournament as any).teamSizeMin ?? expectedMax)
+      : expectedMax;
+    const totalPlayers = partners.length + 1; // self + partners
+    if (totalPlayers < expectedMin || totalPlayers > expectedMax) {
+      return next(badRequest(
+        expectedMin === expectedMax
+          ? `Este torneo requiere ${expectedMax} jugadores (tú y ${expectedMax - 1} compañero${expectedMax - 1 !== 1 ? "s" : ""})`
+          : `Este torneo requiere entre ${expectedMin} y ${expectedMax} jugadores`
+      ));
+    }
+
+    // ── Self: metric + games from own player record ────────────────────────────
+    const self = await prisma.user.findUnique({
+      where: { id: req.user!.userId }, select: { id: true, name: true, dni: true },
+    });
+    if (!self) return next(notFound("Usuario"));
+
+    const metricField = (tournament.metric ?? "mpr") as "ppd" | "mpr" | "combined";
+    let selfMetric: number | null = null;
+    let selfGames:  number | null = null;
+    if (self.dni) {
+      const rec = await prisma.playerRecord.findFirst({
+        where:   { dni: { equals: self.dni, mode: "insensitive" } },
+        orderBy: { createdAt: "desc" },
+        select:  { ppd: true, mpr: true, combined: true, gamesPlayed: true },
+      });
+      if (rec) { selfMetric = rec[metricField] ?? null; selfGames = rec.gamesPlayed ?? null; }
+    }
+
+    // ── Guard: self not already inscribed (by account or DNI) ──────────────────
+    const existing = await prisma.participant.findFirst({
+      where: {
+        tournamentId: tournament.id,
+        OR: [
+          { userId: self.id },
+          ...(self.dni ? [{ dni: { equals: self.dni, mode: "insensitive" as const } }] : []),
+        ],
+      },
+    });
+    if (existing) return next(badRequest("Ya estás inscrito en este torneo"));
+
+    // ── Resolve partners → user accounts ───────────────────────────────────────
+    const partnerUsers: { id: string; name: string; metricValue: number | null; gamesPlayed: number | null }[] = [];
+    for (const p of partners) {
+      const u = await findOrCreateUserByRecord(p.name, p.dni);
+      partnerUsers.push({ id: u.id, name: u.name, metricValue: p.metricValue ?? null, gamesPlayed: p.gamesPlayed ?? null });
+    }
+
+    const allPlayers = [
+      { id: self.id, name: self.name, metricValue: selfMetric, gamesPlayed: selfGames, captain: true },
+      ...partnerUsers.map(p => ({ ...p, captain: false })),
+    ];
+
+    if (new Set(allPlayers.map(p => p.id)).size !== allPlayers.length) {
+      return next(badRequest("No puedes inscribirte con el mismo jugador dos veces"));
+    }
+
+    // ── Guard: no player already in another group of this tournament ───────────
+    const alreadyInGroup = await prisma.teamMember.findMany({
+      where: {
+        userId: { in: allPlayers.map(p => p.id) },
+        team:   { participants: { some: { tournamentId: tournament.id } } },
+      },
+      select: { user: { select: { name: true } } },
+    });
+    if (alreadyInGroup.length > 0) {
+      const names = [...new Set(alreadyInGroup.map(m => m.user.name))].join(", ");
+      return next(badRequest(`${names} ya está inscrito en otra pareja de este torneo`));
+    }
+
+    // ── Effective max + SUMMED metric limit ────────────────────────────────────
+    const levelMaxValues = (tournament.levels ?? [])
+      .map((l: { maxValue: number | null }) => l.maxValue)
+      .filter((v): v is number => v != null);
+    const effectiveMax: number | null = tournament.maxMetric ??
+      (levelMaxValues.length > 0 ? Math.max(...levelMaxValues) : null);
+
+    const metricN = tournament.metricPlayers ?? allPlayers.length;
+    const knownVals = allPlayers
+      .map(p => p.metricValue)
+      .filter((v): v is number => v != null)
+      .sort((a, b) => b - a)
+      .slice(0, metricN);
+    const storedMetric: number | null = knownVals.length > 0
+      ? Math.round(knownVals.reduce((a, b) => a + b, 0) * 100) / 100
+      : null;
+
+    if (effectiveMax != null && knownVals.length === Math.min(metricN, allPlayers.length) && storedMetric != null && storedMetric > effectiveMax) {
+      return next(badRequest(
+        `La suma de medias de la pareja (${storedMetric.toFixed(2)}) supera el límite del torneo (${effectiveMax.toFixed(2)})`
+      ));
+    }
+
+    // ── Create team + participant (pending organizer approval) ─────────────────
+    const teamName = groupName?.trim() || allPlayers.map(p => p.name.split(" ")[0]).join(" & ");
+    const team = await prisma.team.create({
+      data: {
+        name:       teamName,
+        createdById: self.id,
+        members: {
+          create: allPlayers.map(p => ({
+            userId:      p.id,
+            role:        (p.captain ? "captain" : "member") as any,
+            metricValue: p.metricValue,
+            gamesPlayed: p.gamesPlayed,
+          })),
+        },
+      },
+    });
+
+    const participant = await prisma.participant.create({
+      data: {
+        tournamentId:      tournament.id,
+        entityType:        tournament.participantType as any,
+        teamId:            team.id,
+        inscriptionStatus: "pending_web",
+        paymentStatus:     "pending",
+        metricValue:       storedMetric,
+      },
+      include: INCLUDE_PARTICIPANT,
+    });
+
+    const lowGames = allPlayers.filter(p => p.gamesPlayed != null && p.gamesPlayed < MIN_GAMES_FOR_REVIEW).map(p => p.name);
+    audit({ req, action: "participant.add", entityType: "participant", entityId: participant.id, entityName: teamName, details: { tournamentId: tournament.id, selfInscribed: true, lowGames } });
+
+    return res.status(201).json({
+      data: participant,
+      message: "Inscripción de pareja enviada. Pendiente de aprobación del organizador.",
+    });
+  } catch (err) { next(err); }
 };
 
 // ─── blindPair: auto-pair parejas_ciegas players ─────────────────────────────

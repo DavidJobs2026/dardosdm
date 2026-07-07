@@ -126,6 +126,7 @@ model TeamMember {
   userId      String         @map("user_id")
   role        TeamMemberRole @default(member)
   metricValue Float?         @map("metric_value")
+  gamesPlayed Int?           @map("games_played")   // games in the selected season — used to flag < min for organizer review
   joinedAt    DateTime       @default(now()) @map("joined_at")
 
   team Team @relation(fields: [teamId], references: [id], onDelete: Cascade)

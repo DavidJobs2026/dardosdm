@@ -7,6 +7,7 @@ import { api } from "@/lib/api";
 import { Tournament } from "@tournament/types";
 import { useAuthStore } from "@/store/auth.store";
 import { usePushNotifications } from "@/hooks/usePushNotifications";
+import { PairInscriptionModal } from "@/components/tournament/PairInscriptionModal";
 import toast from "react-hot-toast";
 import {
   Trophy, Users, Calendar, Bell, Loader2, Swords, Clock, CheckCircle, Play,
@@ -55,6 +56,16 @@ function TournamentCard({
   const [inscriptionState, setInscriptionState] = useState<InscriptionState>(
     tournament._inscriptionStatus ?? "none"
   );
+  const [showPairModal, setShowPairModal] = useState(false);
+
+  // Group formats where the player must pick partner(s). parejas_ciegas is
+  // auto-paired by the organizer, so it uses the plain solo self-inscription.
+  const pt = tournament.participantType;
+  const isGroupType = pt === "parejas" || pt === "trios" || pt === "equipos";
+  const requiredPartners = pt === "parejas" ? 1
+    : pt === "trios" ? 2
+    : pt === "equipos" ? Math.max(((tournament as any).teamSize ?? 4) - 1, 1)
+    : 0;
 
   const canInscribe =
     (tournament as any).allowPlayerReg &&
@@ -64,6 +75,8 @@ function TournamentCard({
   const handleInscribe = async (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
+    // Group formats → open the partner-selection modal instead of a bare POST
+    if (isGroupType) { setShowPairModal(true); return; }
     setInscriptionState("loading");
     try {
       await api.post(`/tournaments/${tournament.id}/player-inscribe`);
@@ -177,6 +190,20 @@ function TournamentCard({
           )}
         </div>
       </div>
+
+      {showPairModal && (
+        <div onClick={e => { e.preventDefault(); e.stopPropagation(); }}>
+          <PairInscriptionModal
+            tournamentId={tournament.id}
+            tournamentName={tournament.name}
+            metric={(tournament as any).metric ?? "combined"}
+            gameType={(tournament as any).gameType ?? null}
+            requiredPartners={requiredPartners}
+            onClose={() => setShowPairModal(false)}
+            onSuccess={() => setInscriptionState("pending")}
+          />
+        </div>
+      )}
     </Link>
   );
 }

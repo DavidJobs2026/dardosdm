@@ -13,6 +13,7 @@ import {
 import {
   listParticipants, addParticipant, addGroupParticipant, blindPair,
   removeParticipant, randomizeSeeds, updateSeed, updatePayment, updateMetric,
+  playerInscribeGroup,
 } from "../controllers/participant.controller";
 import { listMatches, getMatch, reportResult, repairBracket, resetMatchResult } from "../controllers/match.controller";
 import { listReferees, getMyReferee, addReferee, removeReferee } from "../controllers/referee.controller";
@@ -52,6 +53,7 @@ export default function tournamentRoutes(io: SocketServer): Router {
 
   // Player self-inscription
   router.post("/:id/player-inscribe",              authenticate, playerInscribe);
+  router.post("/:id/player-inscribe-group",        authenticate, playerInscribeGroup);
   router.get("/:id/pending-inscriptions",          authenticate, getPendingInscriptions);
   router.patch("/:id/inscriptions/:participantId", authenticate, resolveInscription);
 
