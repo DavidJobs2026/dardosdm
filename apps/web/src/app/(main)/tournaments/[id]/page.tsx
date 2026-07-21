@@ -26,6 +26,7 @@ import {
 } from "@/components/tournament/TournamentFormShared";
 import { DateTimePicker } from "@/components/ui/DateTimePicker";
 import { InscriptionPanel } from "@/components/tournament/InscriptionPanel";
+import { PairInscriptionModal } from "@/components/tournament/PairInscriptionModal";
 import { TournamentImageUpload } from "@/components/tournament/TournamentImageUpload";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -1880,7 +1881,19 @@ export default function TournamentDetailPage({ params }: { params: Promise<{ id:
     }
   }, [participants, user]);
 
+  // Group formats where the player must pick partner(s). parejas_ciegas is
+  // auto-paired by the organizer, so it keeps the plain solo self-inscription.
+  const [showPairModal, setShowPairModal] = useState(false);
+  const inscribePt = tournament?.participantType;
+  const inscribeIsGroup = inscribePt === "parejas" || inscribePt === "trios" || inscribePt === "equipos";
+  const inscribeRequiredPartners = inscribePt === "parejas" ? 1
+    : inscribePt === "trios" ? 2
+    : inscribePt === "equipos" ? Math.max(((tournament as any)?.teamSize ?? 4) - 1, 1)
+    : 0;
+
   const handlePlayerInscribe = async () => {
+    // Group formats → open the partner-selection modal instead of a bare POST
+    if (inscribeIsGroup) { setShowPairModal(true); return; }
     setPlayerInscriptionStatus("loading");
     try {
       await api.post(`/tournaments/${id}/player-inscribe`);
@@ -2164,6 +2177,18 @@ export default function TournamentDetailPage({ params }: { params: Promise<{ id:
                 </button>
               );
             })()}
+
+            {showPairModal && tournament && (
+              <PairInscriptionModal
+                tournamentId={tournament.id}
+                tournamentName={tournament.name}
+                metric={(tournament as any).metric ?? "combined"}
+                gameType={(tournament as any).gameType ?? null}
+                requiredPartners={inscribeRequiredPartners}
+                onClose={() => setShowPairModal(false)}
+                onSuccess={() => { setPlayerInscriptionStatus("pending"); loadData(); }}
+              />
+            )}
 
             {canJoin && user?.role !== "player" && (
               <button onClick={handleJoin} className="btn-primary flex items-center gap-2 whitespace-nowrap">
