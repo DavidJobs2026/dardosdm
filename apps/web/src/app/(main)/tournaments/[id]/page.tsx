@@ -1980,7 +1980,10 @@ export default function TournamentDetailPage({ params }: { params: Promise<{ id:
     if (!approvingInsc) return;
     setApproving(true);
     let mv: number | null;
-    if (tournament?.metric === "combined") {
+    if (approvingInsc.team) {
+      // Team/pair: the summed metric was set at inscription — approve as-is
+      mv = null;
+    } else if (tournament?.metric === "combined") {
       mv = approveComputed;
     } else {
       mv = approveMetric.trim() ? parseFloat(approveMetric.trim()) : null;
@@ -3040,6 +3043,52 @@ export default function TournamentDetailPage({ params }: { params: Promise<{ id:
             </div>
 
             <div className="px-5 py-4 space-y-4">
+              {approvingInsc.team ? (
+              /* ── Team / pair approval: show the metric the player provided ── */
+              <div className="space-y-3">
+                <div className="flex items-center gap-3 p-3 bg-ink-800 rounded-xl">
+                  <div className="w-9 h-9 rounded-lg bg-red-gradient flex items-center justify-center text-sm font-bold text-white shrink-0">
+                    {approvingInsc.team.name?.[0]?.toUpperCase() ?? "?"}
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-white font-semibold text-sm truncate">{approvingInsc.team.name}</p>
+                    <p className="text-ink-500 text-xs">Inscripción por web · pareja/equipo</p>
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-ink-400 mb-1.5 uppercase tracking-wider">Media proporcionada por el jugador</label>
+                  <div className="space-y-1.5">
+                    {(approvingInsc.team.members ?? []).map((m: any, i: number) => {
+                      const low = m.gamesPlayed != null && m.gamesPlayed < 18;
+                      return (
+                        <div key={i} className="flex items-center justify-between px-3 py-2 bg-ink-950 border border-ink-700 rounded-xl">
+                          <span className="text-sm text-white truncate">{m.user?.name}</span>
+                          <span className="text-xs text-ink-300 shrink-0 tabular-nums">
+                            {m.metricValue != null ? m.metricValue.toFixed(2) : "—"}
+                            {m.gamesPlayed != null && (
+                              <span className={low ? "text-amber-400 ml-2" : "text-ink-500 ml-2"}>{m.gamesPlayed}p{low ? " ⚠" : ""}</span>
+                            )}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  {approvingInsc.metricValue != null && (
+                    <div className="flex items-center justify-between px-3.5 py-2.5 mt-2 bg-ink-950 border border-ink-700 rounded-xl">
+                      <span className="text-xs font-semibold text-ink-400 uppercase tracking-wider">Suma (media de la pareja)</span>
+                      <span className="text-amber-400 font-bold text-sm tabular-nums">{approvingInsc.metricValue.toFixed(2)}</span>
+                    </div>
+                  )}
+                </div>
+                {approvingInsc.note && (
+                  <div className="rounded-xl border border-ink-700 bg-ink-800/50 p-3">
+                    <p className="text-[10px] font-semibold text-ink-500 uppercase tracking-wide mb-1">Observaciones · procedencia de la media</p>
+                    <p className="text-xs text-ink-300 whitespace-pre-wrap">{approvingInsc.note}</p>
+                  </div>
+                )}
+              </div>
+              ) : (
+              <>
               {/* Player info */}
               <div className="flex items-center gap-3 p-3 bg-ink-800 rounded-xl">
                 <div className="w-9 h-9 rounded-lg bg-ink-700 flex items-center justify-center text-sm font-bold text-white shrink-0">
@@ -3129,6 +3178,8 @@ export default function TournamentDetailPage({ params }: { params: Promise<{ id:
                     <p className="text-ink-600 text-xs mt-1">Déjalo vacío si no tiene media asignada</p>
                   )}
                 </div>
+              )}
+              </>
               )}
 
               <div className="flex gap-2 pt-1">
