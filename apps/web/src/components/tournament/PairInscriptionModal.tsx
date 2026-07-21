@@ -53,6 +53,34 @@ export function PairInscriptionModal({
   const [submitting, setSubmitting] = useState(false);
   const debounce = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // ── Own metric ─────────────────────────────────────────────────────────────
+  // Fetch the player's own metric/games. If they have none in the historical DB,
+  // we ask them to type it (otherwise the pair limit can't be checked).
+  const [selfLoading, setSelfLoading] = useState(true);
+  const [selfHasMetric, setSelfHasMetric] = useState(false);
+  const [selfMetric, setSelfMetric] = useState<number | null>(null);
+  const [selfGames, setSelfGames]   = useState<number | null>(null);
+  const [selfMetricInput, setSelfMetricInput] = useState("");
+  const [selfGamesInput, setSelfGamesInput]   = useState("");
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const { data } = await api.get(`/tournaments/${tournamentId}/my-group-metric`);
+        if (cancelled) return;
+        setSelfHasMetric(!!data.data?.hasMetric);
+        setSelfMetric(data.data?.metricValue ?? null);
+        setSelfGames(data.data?.gamesPlayed ?? null);
+      } catch {
+        if (!cancelled) setSelfHasMetric(false);
+      } finally {
+        if (!cancelled) setSelfLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [tournamentId]);
+
   const search = useCallback((q: string) => {
     if (debounce.current) clearTimeout(debounce.current);
     if (q.trim().length < 2) { setResults([]); return; }
@@ -86,14 +114,29 @@ export function PairInscriptionModal({
 
   const removePartner = (i: number) => setPartners(prev => prev.filter((_, idx) => idx !== i));
 
+  // When the player has no metric on record they must type it in.
+  const needsSelfMetric = !selfLoading && !selfHasMetric;
+  const parsedSelfMetric = selfMetricInput.trim() !== "" ? Number(selfMetricInput.replace(",", ".")) : null;
+  const parsedSelfGames  = selfGamesInput.trim()  !== "" ? Math.round(Number(selfGamesInput)) : null;
+
   const handleSubmit = async () => {
     if (partners.length !== requiredPartners) {
       toast.error(`Añade ${requiredPartners} compañero${requiredPartners !== 1 ? "s" : ""}`);
       return;
     }
+    if (needsSelfMetric && (parsedSelfMetric == null || !isFinite(parsedSelfMetric))) {
+      toast.error("Introduce tu media");
+      return;
+    }
     setSubmitting(true);
     try {
-      await api.post(`/tournaments/${tournamentId}/player-inscribe-group`, { partners });
+      await api.post(`/tournaments/${tournamentId}/player-inscribe-group`, {
+        partners,
+        ...(needsSelfMetric ? {
+          selfMetric: parsedSelfMetric,
+          ...(parsedSelfGames != null && isFinite(parsedSelfGames) ? { selfGames: parsedSelfGames } : {}),
+        } : {}),
+      });
       toast.success("Inscripción de pareja enviada. Pendiente de aprobación.");
       onSuccess();
       onClose();
@@ -124,10 +167,47 @@ export function PairInscriptionModal({
         </div>
 
         <div className="px-5 py-4 space-y-4 overflow-y-auto">
-          {/* You */}
-          <div className="rounded-xl border border-ink-700 bg-ink-800/40 p-3 text-xs text-ink-400">
-            Tú entras como capitán. Tu media y partidas se toman de tu ficha histórica.
-          </div>
+          {/* You (captain) */}
+          {selfLoading ? (
+            <div className="rounded-xl border border-ink-700 bg-ink-800/40 p-3 text-xs text-ink-500 flex items-center gap-2">
+              <Loader2 className="w-3.5 h-3.5 animate-spin" /> Cargando tus datos…
+            </div>
+          ) : selfHasMetric ? (
+            <div className="rounded-xl border border-ink-700 bg-ink-800/40 p-3 text-xs text-ink-400">
+              Tú entras como capitán · <span className="text-ink-200 font-semibold">{metricLabel} {selfMetric?.toFixed(2)}</span>
+              {selfGames != null && <span className="text-ink-500"> · {selfGames} partidas</span>}
+              {selfGames != null && selfGames < MIN_GAMES && (
+                <span className="block text-amber-400 mt-1">⚠ Tienes menos de {MIN_GAMES} partidas — el organizador lo revisará</span>
+              )}
+            </div>
+          ) : (
+            <div className="rounded-xl border border-amber-700/40 bg-amber-900/10 p-3 space-y-2.5">
+              <p className="text-xs text-amber-300 font-semibold">No tienes media en la base de datos</p>
+              <p className="text-[11px] text-amber-200/70 leading-relaxed">Introduce tu media y tus partidas para poder inscribirte (el organizador lo revisará).</p>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block text-[10px] font-semibold text-ink-400 mb-1 uppercase tracking-wide">Tu media ({metricLabel})</label>
+                  <input
+                    value={selfMetricInput}
+                    onChange={e => setSelfMetricInput(e.target.value)}
+                    inputMode="decimal"
+                    placeholder="ej. 45.50"
+                    className="w-full px-3 py-2 bg-ink-950 border border-ink-700 rounded-lg text-white text-sm focus:outline-none focus:border-red-500/60 transition-all placeholder-ink-600"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-semibold text-ink-400 mb-1 uppercase tracking-wide">Tus partidas</label>
+                  <input
+                    value={selfGamesInput}
+                    onChange={e => setSelfGamesInput(e.target.value)}
+                    inputMode="numeric"
+                    placeholder="ej. 20"
+                    className="w-full px-3 py-2 bg-ink-950 border border-ink-700 rounded-lg text-white text-sm focus:outline-none focus:border-red-500/60 transition-all placeholder-ink-600"
+                  />
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Selected partners */}
           {partners.length > 0 && (
@@ -222,7 +302,7 @@ export function PairInscriptionModal({
             className="flex-1 py-2.5 rounded-xl border border-ink-700 text-ink-400 text-sm font-semibold hover:text-white hover:border-ink-500 transition-colors">
             Cancelar
           </button>
-          <button onClick={handleSubmit} disabled={submitting || partners.length !== requiredPartners}
+          <button onClick={handleSubmit} disabled={submitting || partners.length !== requiredPartners || (needsSelfMetric && (parsedSelfMetric == null || !isFinite(parsedSelfMetric)))}
             className="flex-1 py-2.5 rounded-xl bg-red-600 hover:bg-red-500 text-white text-sm font-bold transition-colors disabled:opacity-50 flex items-center justify-center gap-1.5">
             {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
             {submitting ? "Enviando…" : "Inscribir pareja"}

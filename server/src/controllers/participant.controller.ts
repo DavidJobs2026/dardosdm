@@ -415,6 +415,9 @@ const playerGroupSchema = z.object({
     gamesPlayed: z.number().int().optional(),
   })).min(1).max(6),
   groupName: z.string().optional(),
+  // Fallback values for the inscribing player when they have no historical record
+  selfMetric: z.number().optional(),
+  selfGames:  z.number().int().optional(),
 });
 
 /** Resolve a player record (name + optional dni) to a real or ghost user account. */
@@ -472,7 +475,7 @@ export const playerInscribeGroup = async (req: AuthRequest, res: Response, next:
       return next(badRequest("El torneo está completo"));
     }
 
-    const { partners, groupName } = playerGroupSchema.parse(req.body);
+    const { partners, groupName, selfMetric: selfMetricInput, selfGames: selfGamesInput } = playerGroupSchema.parse(req.body);
 
     // ── Expected group size ────────────────────────────────────────────────────
     const expectedMax = tournament.participantType === "parejas" ? 2
@@ -507,6 +510,9 @@ export const playerInscribeGroup = async (req: AuthRequest, res: Response, next:
       });
       if (rec) { selfMetric = rec[metricField] ?? null; selfGames = rec.gamesPlayed ?? null; }
     }
+    // Player has no historical metric/games → use the value they entered in the form
+    if (selfMetric == null && selfMetricInput != null) selfMetric = selfMetricInput;
+    if (selfGames  == null && selfGamesInput  != null) selfGames  = selfGamesInput;
 
     // ── Guard: self not already inscribed (by account or DNI) ──────────────────
     const existing = await prisma.participant.findFirst({
@@ -607,6 +613,52 @@ export const playerInscribeGroup = async (req: AuthRequest, res: Response, next:
     return res.status(201).json({
       data: participant,
       message: "Inscripción de pareja enviada. Pendiente de aprobación del organizador.",
+    });
+  } catch (err) { next(err); }
+};
+
+// ─── getMyGroupMetric: the logged-in player's own metric + games ──────────────
+// Used by the pair-inscription modal to decide whether it must ask the player
+// for their metric (when they have no historical record).
+export const getMyGroupMetric = async (req: AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    const tournament = await prisma.tournament.findUnique({
+      where: { id: req.params.id }, select: { metric: true, preferredSeason: true },
+    });
+    if (!tournament) return next(notFound("Tournament"));
+
+    const self = await prisma.user.findUnique({
+      where: { id: req.user!.userId }, select: { name: true, dni: true },
+    });
+    const metricField = (tournament.metric ?? "mpr") as "ppd" | "mpr" | "combined";
+
+    let record = null;
+    if (self?.dni) {
+      if (tournament.preferredSeason) {
+        record = await prisma.playerRecord.findFirst({
+          where:   { dni: { equals: self.dni, mode: "insensitive" }, season: tournament.preferredSeason },
+          orderBy: { createdAt: "desc" },
+          select:  { ppd: true, mpr: true, combined: true, gamesPlayed: true },
+        });
+      }
+      if (!record) {
+        record = await prisma.playerRecord.findFirst({
+          where:   { dni: { equals: self.dni, mode: "insensitive" } },
+          orderBy: { createdAt: "desc" },
+          select:  { ppd: true, mpr: true, combined: true, gamesPlayed: true },
+        });
+      }
+    }
+
+    const metricValue = record ? (record[metricField] ?? null) : null;
+    return res.json({
+      data: {
+        name:        self?.name ?? null,
+        metric:      metricField,
+        metricValue,
+        gamesPlayed: record?.gamesPlayed ?? null,
+        hasMetric:   metricValue != null,
+      },
     });
   } catch (err) { next(err); }
 };
