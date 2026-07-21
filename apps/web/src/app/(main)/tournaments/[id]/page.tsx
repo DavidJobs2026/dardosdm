@@ -2755,6 +2755,11 @@ export default function TournamentDetailPage({ params }: { params: Promise<{ id:
                                 </span>
                               )}
                             </div>
+                            {insc.note && (
+                              <p className="text-[11px] text-ink-400 mt-1.5 bg-ink-900/60 border border-ink-700 rounded-lg px-2 py-1.5">
+                                📝 <span className="text-ink-300">{insc.note}</span>
+                              </p>
+                            )}
                           </>
                         ) : isOrphaned ? (
                           <p className="text-red-600 text-xs italic">La cuenta fue eliminada — solo se puede rechazar</p>

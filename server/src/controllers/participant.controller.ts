@@ -415,8 +415,12 @@ const playerGroupSchema = z.object({
     gamesPlayed: z.number().int().optional(),
   })).min(1).max(6),
   groupName: z.string().optional(),
-  // Fallback values for the inscribing player when they have no historical record
-  selfMetric: z.number().optional(),
+  note:      z.string().max(500).optional(),   // provenance of a manually-entered metric
+  // Fallback values for the inscribing player when they have no historical record.
+  // The metric is computed from mpr/ppd (combined = mpr*10 + ppd).
+  selfMpr:   z.number().optional(),
+  selfPpd:   z.number().optional(),
+  selfMetric: z.number().optional(),           // legacy direct value (still accepted)
   selfGames:  z.number().int().optional(),
 });
 
@@ -475,7 +479,7 @@ export const playerInscribeGroup = async (req: AuthRequest, res: Response, next:
       return next(badRequest("El torneo está completo"));
     }
 
-    const { partners, groupName, selfMetric: selfMetricInput, selfGames: selfGamesInput } = playerGroupSchema.parse(req.body);
+    const { partners, groupName, note, selfMpr, selfPpd, selfMetric: selfMetricInput, selfGames: selfGamesInput } = playerGroupSchema.parse(req.body);
 
     // ── Expected group size ────────────────────────────────────────────────────
     const expectedMax = tournament.participantType === "parejas" ? 2
@@ -510,9 +514,18 @@ export const playerInscribeGroup = async (req: AuthRequest, res: Response, next:
       });
       if (rec) { selfMetric = rec[metricField] ?? null; selfGames = rec.gamesPlayed ?? null; }
     }
-    // Player has no historical metric/games → use the value they entered in the form
-    if (selfMetric == null && selfMetricInput != null) selfMetric = selfMetricInput;
-    if (selfGames  == null && selfGamesInput  != null) selfGames  = selfGamesInput;
+    // Player has no historical record → derive the metric from the mpr/ppd they
+    // entered (combined = mpr*10 + ppd), matching the tournament's metric type.
+    if (selfMetric == null) {
+      if (metricField === "mpr" && selfMpr != null) selfMetric = selfMpr;
+      else if (metricField === "ppd" && selfPpd != null) selfMetric = selfPpd;
+      else if (metricField === "combined" && selfMpr != null && selfPpd != null) {
+        selfMetric = Math.round((selfMpr * 10 + selfPpd) * 100) / 100;
+      } else if (selfMetricInput != null) {
+        selfMetric = selfMetricInput; // legacy direct value
+      }
+    }
+    if (selfGames == null && selfGamesInput != null) selfGames = selfGamesInput;
 
     // ── Guard: self not already inscribed (by account or DNI) ──────────────────
     const existing = await prisma.participant.findFirst({
@@ -603,6 +616,7 @@ export const playerInscribeGroup = async (req: AuthRequest, res: Response, next:
         inscriptionStatus: "pending_web",
         paymentStatus:     "pending",
         metricValue:       storedMetric,
+        note:              note?.trim() || null,
       },
       include: INCLUDE_PARTICIPANT,
     });

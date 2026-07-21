@@ -248,6 +248,7 @@ model Participant {
   paymentStatus     String?  @map("payment_status")      // "pending" | "paid"
   paymentMethod     String?  @map("payment_method")      // "cash" | "card"
   inscriptionStatus String   @default("confirmed") @map("inscription_status") // "confirmed"|"pending"|"rejected"
+  note              String?                              // free-text notes (e.g. provenance of a manually-entered metric)
   registeredAt      DateTime @default(now()) @map("registered_at")
 
   tournament  Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)

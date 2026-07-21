@@ -63,8 +63,10 @@ export function PairInscriptionModal({
   const [selfHasMetric, setSelfHasMetric] = useState(false);
   const [selfMetric, setSelfMetric] = useState<number | null>(null);
   const [selfGames, setSelfGames]   = useState<number | null>(null);
-  const [selfMetricInput, setSelfMetricInput] = useState("");
-  const [selfGamesInput, setSelfGamesInput]   = useState("");
+  const [selfMprInput, setSelfMprInput]   = useState("");
+  const [selfPpdInput, setSelfPpdInput]   = useState("");
+  const [selfGamesInput, setSelfGamesInput] = useState("");
+  const [noteInput, setNoteInput]         = useState("");
 
   useEffect(() => {
     let cancelled = false;
@@ -117,18 +119,28 @@ export function PairInscriptionModal({
 
   const removePartner = (i: number) => setPartners(prev => prev.filter((_, idx) => idx !== i));
 
-  // When the player has no metric on record they must type it in.
+  // When the player has no metric on record they must type MPR + PPD; the
+  // combined metric is computed automatically (combined = mpr*10 + ppd).
   const needsSelfMetric = !selfLoading && !selfHasMetric;
-  const parsedSelfMetric = selfMetricInput.trim() !== "" ? Number(selfMetricInput.replace(",", ".")) : null;
-  const parsedSelfGames  = selfGamesInput.trim()  !== "" ? Math.round(Number(selfGamesInput)) : null;
+  const parsedSelfMpr = selfMprInput.trim() !== "" ? Number(selfMprInput.replace(",", ".")) : null;
+  const parsedSelfPpd = selfPpdInput.trim() !== "" ? Number(selfPpdInput.replace(",", ".")) : null;
+  const parsedSelfGames = selfGamesInput.trim() !== "" ? Math.round(Number(selfGamesInput)) : null;
+  const computedCombined = (parsedSelfMpr != null && isFinite(parsedSelfMpr) && parsedSelfPpd != null && isFinite(parsedSelfPpd))
+    ? Math.round((parsedSelfMpr * 10 + parsedSelfPpd) * 100) / 100
+    : null;
+  // Which inputs are required depends on the tournament's metric type
+  const selfMetricReady =
+    metric === "mpr" ? (parsedSelfMpr != null && isFinite(parsedSelfMpr))
+    : metric === "ppd" ? (parsedSelfPpd != null && isFinite(parsedSelfPpd))
+    : (computedCombined != null);
 
   const handleSubmit = async () => {
     if (partners.length !== requiredPartners) {
       toast.error(`Añade ${requiredPartners} compañero${requiredPartners !== 1 ? "s" : ""}`);
       return;
     }
-    if (needsSelfMetric && (parsedSelfMetric == null || !isFinite(parsedSelfMetric))) {
-      toast.error("Introduce tu media");
+    if (needsSelfMetric && !selfMetricReady) {
+      toast.error(metric === "mpr" ? "Introduce tu MPR" : metric === "ppd" ? "Introduce tu PPD" : "Introduce tu MPR y PPD");
       return;
     }
     if (groupName.trim().length < 2) {
@@ -140,8 +152,10 @@ export function PairInscriptionModal({
       await api.post(`/tournaments/${tournamentId}/player-inscribe-group`, {
         partners,
         groupName: groupName.trim(),
+        ...(noteInput.trim() ? { note: noteInput.trim() } : {}),
         ...(needsSelfMetric ? {
-          selfMetric: parsedSelfMetric,
+          ...(parsedSelfMpr != null && isFinite(parsedSelfMpr) ? { selfMpr: parsedSelfMpr } : {}),
+          ...(parsedSelfPpd != null && isFinite(parsedSelfPpd) ? { selfPpd: parsedSelfPpd } : {}),
           ...(parsedSelfGames != null && isFinite(parsedSelfGames) ? { selfGames: parsedSelfGames } : {}),
         } : {}),
       });
@@ -206,20 +220,30 @@ export function PairInscriptionModal({
           ) : (
             <div className="rounded-xl border border-amber-700/40 bg-amber-900/10 p-3 space-y-2.5">
               <p className="text-xs text-amber-300 font-semibold">No tienes media en la base de datos</p>
-              <p className="text-[11px] text-amber-200/70 leading-relaxed">Introduce tu media y tus partidas para poder inscribirte (el organizador lo revisará).</p>
-              <div className="grid grid-cols-2 gap-2">
+              <p className="text-[11px] text-amber-200/70 leading-relaxed">Introduce tu MPR y PPD; la combinada se calcula sola. El organizador lo revisará.</p>
+              <div className="grid grid-cols-3 gap-2">
                 <div>
-                  <label className="block text-[10px] font-semibold text-ink-400 mb-1 uppercase tracking-wide">Tu media ({metricLabel})</label>
+                  <label className="block text-[10px] font-semibold text-ink-400 mb-1 uppercase tracking-wide">MPR</label>
                   <input
-                    value={selfMetricInput}
-                    onChange={e => setSelfMetricInput(e.target.value)}
+                    value={selfMprInput}
+                    onChange={e => setSelfMprInput(e.target.value)}
                     inputMode="decimal"
-                    placeholder="ej. 45.50"
+                    placeholder="ej. 2.30"
                     className="w-full px-3 py-2 bg-ink-950 border border-ink-700 rounded-lg text-white text-sm focus:outline-none focus:border-red-500/60 transition-all placeholder-ink-600"
                   />
                 </div>
                 <div>
-                  <label className="block text-[10px] font-semibold text-ink-400 mb-1 uppercase tracking-wide">Tus partidas</label>
+                  <label className="block text-[10px] font-semibold text-ink-400 mb-1 uppercase tracking-wide">PPD</label>
+                  <input
+                    value={selfPpdInput}
+                    onChange={e => setSelfPpdInput(e.target.value)}
+                    inputMode="decimal"
+                    placeholder="ej. 25.5"
+                    className="w-full px-3 py-2 bg-ink-950 border border-ink-700 rounded-lg text-white text-sm focus:outline-none focus:border-red-500/60 transition-all placeholder-ink-600"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-semibold text-ink-400 mb-1 uppercase tracking-wide">Partidas</label>
                   <input
                     value={selfGamesInput}
                     onChange={e => setSelfGamesInput(e.target.value)}
@@ -228,6 +252,24 @@ export function PairInscriptionModal({
                     className="w-full px-3 py-2 bg-ink-950 border border-ink-700 rounded-lg text-white text-sm focus:outline-none focus:border-red-500/60 transition-all placeholder-ink-600"
                   />
                 </div>
+              </div>
+              {/* Auto-computed combined */}
+              <div className="text-[11px] text-amber-200/90">
+                Combinada (MPR×10 + PPD):{" "}
+                <span className="font-bold text-white">{computedCombined != null ? computedCombined.toFixed(2) : "—"}</span>
+                {metric !== "combined" && <span className="text-amber-200/60"> · este torneo usa {metricLabel}</span>}
+              </div>
+              {/* Observations / provenance */}
+              <div>
+                <label className="block text-[10px] font-semibold text-ink-400 mb-1 uppercase tracking-wide">Observaciones · procedencia de la media</label>
+                <textarea
+                  value={noteInput}
+                  onChange={e => setNoteInput(e.target.value)}
+                  rows={2}
+                  maxLength={500}
+                  placeholder="Ej.: media de la liga X temporada 2024, o torneo Y…"
+                  className="w-full px-3 py-2 bg-ink-950 border border-ink-700 rounded-lg text-white text-xs focus:outline-none focus:border-red-500/60 transition-all placeholder-ink-600 resize-none"
+                />
               </div>
             </div>
           )}
@@ -325,7 +367,7 @@ export function PairInscriptionModal({
             className="flex-1 py-2.5 rounded-xl border border-ink-700 text-ink-400 text-sm font-semibold hover:text-white hover:border-ink-500 transition-colors">
             Cancelar
           </button>
-          <button onClick={handleSubmit} disabled={submitting || partners.length !== requiredPartners || groupName.trim().length < 2 || (needsSelfMetric && (parsedSelfMetric == null || !isFinite(parsedSelfMetric)))}
+          <button onClick={handleSubmit} disabled={submitting || partners.length !== requiredPartners || groupName.trim().length < 2 || (needsSelfMetric && !selfMetricReady)}
             className="flex-1 py-2.5 rounded-xl bg-red-600 hover:bg-red-500 text-white text-sm font-bold transition-colors disabled:opacity-50 flex items-center justify-center gap-1.5">
             {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
             {submitting ? "Enviando…" : "Inscribir pareja"}
