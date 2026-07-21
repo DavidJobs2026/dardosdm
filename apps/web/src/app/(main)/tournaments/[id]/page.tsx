@@ -1935,6 +1935,8 @@ export default function TournamentDetailPage({ params }: { params: Promise<{ id:
   const [approvePpd,    setApprovePpd]    = useState("");  // used when metric = combined
   const [approveMpr,    setApproveMpr]    = useState("");  // used when metric = combined
   const [approving,     setApproving]     = useState(false);
+  // Editable per-member metrics for team/pair approval: userId → { mpr, ppd }
+  const [memberEdits, setMemberEdits] = useState<Record<string, { mpr: string; ppd: string }>>({});
 
   // Combined value derived from PPD + MPR (formula: mpr*10 + ppd)
   const approveComputed = (() => {
@@ -1944,7 +1946,38 @@ export default function TournamentDetailPage({ params }: { params: Promise<{ id:
     return ((isNaN(mpr) ? 0 : mpr) * 10) + (isNaN(ppd) ? 0 : ppd);
   })();
 
+  // Compute a member's metric (per the tournament metric type) from its edited mpr/ppd
+  const memberMetricFromEdit = (userId: string): number | null => {
+    const e = memberEdits[userId];
+    if (!e) return null;
+    const mpr = parseFloat(e.mpr);
+    const ppd = parseFloat(e.ppd);
+    const m = tournament?.metric;
+    if (m === "mpr") return isNaN(mpr) ? null : mpr;
+    if (m === "ppd") return isNaN(ppd) ? null : ppd;
+    if (isNaN(mpr) && isNaN(ppd)) return null;
+    return Math.round(((isNaN(mpr) ? 0 : mpr) * 10 + (isNaN(ppd) ? 0 : ppd)) * 100) / 100;
+  };
+  const teamSumFromEdits = (insc: any): number | null => {
+    const members = insc?.team?.members ?? [];
+    const vals = members.map((m: any) => memberMetricFromEdit(m.user?.id)).filter((v: any) => v != null) as number[];
+    return vals.length ? Math.round(vals.reduce((a, b) => a + b, 0) * 100) / 100 : null;
+  };
+
   const openApproveModal = (insc: any) => {
+    if (insc.team) {
+      // Seed the editable member metrics from stored mpr/ppd
+      const edits: Record<string, { mpr: string; ppd: string }> = {};
+      for (const m of insc.team.members ?? []) {
+        edits[m.user?.id] = {
+          mpr: m.mpr != null ? String(m.mpr) : "",
+          ppd: m.ppd != null ? String(m.ppd) : "",
+        };
+      }
+      setMemberEdits(edits);
+      setApprovingInsc(insc);
+      return;
+    }
     const metric = tournament?.metric;
     if (metric === "combined") {
       // Pre-fill from historic PPD/MPR if available
@@ -1961,11 +1994,12 @@ export default function TournamentDetailPage({ params }: { params: Promise<{ id:
     setApprovingInsc(insc);
   };
 
-  const handleResolveInscription = async (participantId: string, action: "approve" | "reject", metricValue?: number | null) => {
+  const handleResolveInscription = async (participantId: string, action: "approve" | "reject", metricValue?: number | null, memberMetrics?: any[]) => {
     try {
       await api.patch(`/tournaments/${id}/inscriptions/${participantId}`, {
         action,
         ...(metricValue != null ? { metricValue } : {}),
+        ...(memberMetrics && memberMetrics.length ? { memberMetrics } : {}),
       });
       toast.success(action === "approve" ? "Inscripción aprobada" : "Inscripción rechazada");
       setApprovingInsc(null);
@@ -1980,15 +2014,28 @@ export default function TournamentDetailPage({ params }: { params: Promise<{ id:
     if (!approvingInsc) return;
     setApproving(true);
     let mv: number | null;
+    let memberMetrics: any[] | undefined;
     if (approvingInsc.team) {
-      // Team/pair: the summed metric was set at inscription — approve as-is
+      // Team/pair: send each member's (possibly edited) mpr/ppd + computed metric;
+      // the server recomputes and stores the summed pair metric.
+      memberMetrics = (approvingInsc.team.members ?? []).map((m: any) => {
+        const e = memberEdits[m.user?.id] ?? { mpr: "", ppd: "" };
+        const mpr = e.mpr.trim() !== "" ? parseFloat(e.mpr) : null;
+        const ppd = e.ppd.trim() !== "" ? parseFloat(e.ppd) : null;
+        return {
+          userId: m.user?.id,
+          mpr: mpr != null && !isNaN(mpr) ? mpr : null,
+          ppd: ppd != null && !isNaN(ppd) ? ppd : null,
+          metricValue: memberMetricFromEdit(m.user?.id),
+        };
+      });
       mv = null;
     } else if (tournament?.metric === "combined") {
       mv = approveComputed;
     } else {
       mv = approveMetric.trim() ? parseFloat(approveMetric.trim()) : null;
     }
-    await handleResolveInscription(approvingInsc.id, "approve", mv);
+    await handleResolveInscription(approvingInsc.id, "approve", mv, memberMetrics);
     setApproving(false);
   };
 
@@ -3055,30 +3102,61 @@ export default function TournamentDetailPage({ params }: { params: Promise<{ id:
                     <p className="text-ink-500 text-xs">Inscripción por web · pareja/equipo</p>
                   </div>
                 </div>
-                <div>
-                  <label className="block text-xs font-semibold text-ink-400 mb-1.5 uppercase tracking-wider">Media proporcionada por el jugador</label>
-                  <div className="space-y-1.5">
-                    {(approvingInsc.team.members ?? []).map((m: any, i: number) => {
-                      const low = m.gamesPlayed != null && m.gamesPlayed < 18;
-                      return (
-                        <div key={i} className="flex items-center justify-between px-3 py-2 bg-ink-950 border border-ink-700 rounded-xl">
-                          <span className="text-sm text-white truncate">{m.user?.name}</span>
-                          <span className="text-xs text-ink-300 shrink-0 tabular-nums">
-                            {m.metricValue != null ? m.metricValue.toFixed(2) : "—"}
-                            {m.gamesPlayed != null && (
-                              <span className={low ? "text-amber-400 ml-2" : "text-ink-500 ml-2"}>{m.gamesPlayed}p{low ? " ⚠" : ""}</span>
-                            )}
-                          </span>
+                <div className="space-y-2.5">
+                  <label className="block text-xs font-semibold text-ink-400 uppercase tracking-wider">Media de cada jugador · editable</label>
+                  {(approvingInsc.team.members ?? []).map((m: any, i: number) => {
+                    const uid = m.user?.id;
+                    const low = m.gamesPlayed != null && m.gamesPlayed < 18;
+                    const combined = memberMetricFromEdit(uid);
+                    return (
+                      <div key={i} className="rounded-xl border border-ink-700 bg-ink-950/60 p-3 space-y-2">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-sm text-white font-semibold truncate">{m.user?.name}</span>
+                          {m.gamesPlayed != null && (
+                            <span className={low ? "text-amber-400 text-[11px] shrink-0" : "text-ink-500 text-[11px] shrink-0"}>{m.gamesPlayed} partidas{low ? " ⚠" : ""}</span>
+                          )}
                         </div>
-                      );
-                    })}
+                        <div className="grid grid-cols-3 gap-2">
+                          <div>
+                            <label className="block text-[10px] text-ink-500 mb-1 uppercase font-semibold">MPR</label>
+                            <input
+                              type="number" step="0.01" min="0"
+                              value={memberEdits[uid]?.mpr ?? ""}
+                              onChange={e => setMemberEdits(prev => ({ ...prev, [uid]: { mpr: e.target.value, ppd: prev[uid]?.ppd ?? "" } }))}
+                              placeholder="0.00"
+                              className="w-full px-2.5 py-2 bg-ink-950 border border-ink-700 rounded-lg text-white text-sm focus:outline-none focus:border-red-500/60 transition-all placeholder-ink-600"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-[10px] text-ink-500 mb-1 uppercase font-semibold">PPD</label>
+                            <input
+                              type="number" step="0.01" min="0"
+                              value={memberEdits[uid]?.ppd ?? ""}
+                              onChange={e => setMemberEdits(prev => ({ ...prev, [uid]: { mpr: prev[uid]?.mpr ?? "", ppd: e.target.value } }))}
+                              placeholder="0.00"
+                              className="w-full px-2.5 py-2 bg-ink-950 border border-ink-700 rounded-lg text-white text-sm focus:outline-none focus:border-red-500/60 transition-all placeholder-ink-600"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-[10px] text-ink-500 mb-1 uppercase font-semibold">{tournament?.metric === "mpr" ? "MPR" : tournament?.metric === "ppd" ? "PPD" : "Comb."}</label>
+                            <div className="w-full px-2.5 py-2 bg-ink-900 border border-ink-800 rounded-lg text-amber-400 text-sm font-bold tabular-nums">
+                              {combined != null ? combined.toFixed(2) : "—"}
+                            </div>
+                          </div>
+                        </div>
+                        <p className="text-[10px] text-ink-500">
+                          Procedencia: <span className="text-ink-300">{m.metricSource || "—"}</span>
+                        </p>
+                      </div>
+                    );
+                  })}
+                  {/* Live sum */}
+                  <div className="flex items-center justify-between px-3.5 py-2.5 bg-ink-950 border border-ink-700 rounded-xl">
+                    <span className="text-xs font-semibold text-ink-400 uppercase tracking-wider">Suma (media de la pareja)</span>
+                    <span className="text-amber-400 font-bold text-sm tabular-nums">
+                      {teamSumFromEdits(approvingInsc) != null ? teamSumFromEdits(approvingInsc)!.toFixed(2) : "—"}
+                    </span>
                   </div>
-                  {approvingInsc.metricValue != null && (
-                    <div className="flex items-center justify-between px-3.5 py-2.5 mt-2 bg-ink-950 border border-ink-700 rounded-xl">
-                      <span className="text-xs font-semibold text-ink-400 uppercase tracking-wider">Suma (media de la pareja)</span>
-                      <span className="text-amber-400 font-bold text-sm tabular-nums">{approvingInsc.metricValue.toFixed(2)}</span>
-                    </div>
-                  )}
                 </div>
                 {approvingInsc.note && (
                   <div className="rounded-xl border border-ink-700 bg-ink-800/50 p-3">

@@ -21,6 +21,9 @@ interface RecordResult {
 interface Partner {
   name: string;
   metricValue: number | null;
+  mpr: number | null;
+  ppd: number | null;
+  source: string | null;
   gamesPlayed: number | null;
 }
 
@@ -112,7 +115,14 @@ export function PairInscriptionModal({
       toast.error("Ese compañero ya está añadido");
       return;
     }
-    setPartners(prev => [...prev, { name: r.name, metricValue: metricOf(r, metric), gamesPlayed: gamesOf(r) }]);
+    setPartners(prev => [...prev, {
+      name: r.name,
+      metricValue: metricOf(r, metric),
+      mpr: r.avgMpr,
+      ppd: r.avgPpd,
+      source: r.seasons[0]?.season ?? "Histórico",
+      gamesPlayed: gamesOf(r),
+    }]);
     setQuery("");
     setResults([]);
   };

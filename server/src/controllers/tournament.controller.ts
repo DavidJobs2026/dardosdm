@@ -1605,7 +1605,7 @@ export const getPendingInscriptions = async (req: AuthRequest, res: Response, ne
             id: true, name: true,
             members: {
               select: {
-                role: true, metricValue: true, gamesPlayed: true,
+                role: true, metricValue: true, mpr: true, ppd: true, metricSource: true, gamesPlayed: true,
                 user: { select: { id: true, name: true } },
               },
             },
@@ -1677,9 +1677,16 @@ export const resolveInscription = async (req: AuthRequest, res: Response, next: 
       return next(forbidden());
     }
 
-    const { action, metricValue } = z.object({
+    const { action, metricValue, memberMetrics } = z.object({
       action:      z.enum(["approve", "reject"]),
       metricValue: z.number().nullable().optional(),
+      // Optional per-member metric edits (pair/team approval adjustments)
+      memberMetrics: z.array(z.object({
+        userId:      z.string(),
+        mpr:         z.number().nullable().optional(),
+        ppd:         z.number().nullable().optional(),
+        metricValue: z.number().nullable().optional(),
+      })).optional(),
     }).parse(req.body);
 
     if (action === "reject") {
@@ -1687,11 +1694,41 @@ export const resolveInscription = async (req: AuthRequest, res: Response, next: 
       return res.json({ message: "Inscripción rechazada y eliminada" });
     }
 
+    // Apply per-member metric edits (organizer adjustment on a pair/team), then
+    // recompute the participant's summed metric from the updated members.
+    let recomputedSum: number | null = null;
+    if (memberMetrics && memberMetrics.length > 0) {
+      const participant = await prisma.participant.findUnique({
+        where:  { id: req.params.participantId },
+        select: { teamId: true },
+      });
+      if (participant?.teamId) {
+        await prisma.$transaction(
+          memberMetrics.map(m =>
+            prisma.teamMember.updateMany({
+              where: { teamId: participant.teamId!, userId: m.userId },
+              data: {
+                ...(m.mpr !== undefined ? { mpr: m.mpr } : {}),
+                ...(m.ppd !== undefined ? { ppd: m.ppd } : {}),
+                ...(m.metricValue !== undefined ? { metricValue: m.metricValue } : {}),
+              },
+            })
+          )
+        );
+        const members = await prisma.teamMember.findMany({
+          where: { teamId: participant.teamId }, select: { metricValue: true },
+        });
+        const vals = members.map(m => m.metricValue).filter((v): v is number => v != null);
+        recomputedSum = vals.length ? Math.round(vals.reduce((a, b) => a + b, 0) * 100) / 100 : null;
+      }
+    }
+
+    const finalMetric = recomputedSum ?? metricValue ?? undefined;
     const updated = await prisma.participant.update({
       where: { id: req.params.participantId },
       data: {
         inscriptionStatus: "confirmed",
-        ...(metricValue != null ? { metricValue } : {}),
+        ...(finalMetric != null ? { metricValue: finalMetric } : {}),
       },
       include: { user: { select: { id: true, name: true, email: true } } },
     });

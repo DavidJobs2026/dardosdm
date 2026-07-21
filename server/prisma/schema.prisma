@@ -125,7 +125,10 @@ model TeamMember {
   teamId      String         @map("team_id")
   userId      String         @map("user_id")
   role        TeamMemberRole @default(member)
-  metricValue Float?         @map("metric_value")
+  metricValue Float?         @map("metric_value")   // combined metric (mpr*10 + ppd)
+  mpr         Float?                                // raw MPR (for display/edit at approval)
+  ppd         Float?                                // raw PPD (for display/edit at approval)
+  metricSource String?       @map("metric_source")  // provenance: season name, or "Introducida por el jugador"
   gamesPlayed Int?           @map("games_played")   // games in the selected season — used to flag < min for organizer review
   joinedAt    DateTime       @default(now()) @map("joined_at")
 

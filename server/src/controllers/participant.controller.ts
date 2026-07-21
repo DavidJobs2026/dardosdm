@@ -412,6 +412,9 @@ const playerGroupSchema = z.object({
     name:        z.string().min(1),
     dni:         z.string().optional(),
     metricValue: z.number().optional(),
+    mpr:         z.number().optional(),
+    ppd:         z.number().optional(),
+    source:      z.string().max(120).optional(),   // provenance (season, "Histórico"…)
     gamesPlayed: z.number().int().optional(),
   })).min(1).max(6),
   groupName: z.string().optional(),
@@ -506,17 +509,28 @@ export const playerInscribeGroup = async (req: AuthRequest, res: Response, next:
     const metricField = (tournament.metric ?? "mpr") as "ppd" | "mpr" | "combined";
     let selfMetric: number | null = null;
     let selfGames:  number | null = null;
+    let selfMprVal: number | null = null;
+    let selfPpdVal: number | null = null;
+    let selfSource: string | null = null;
     if (self.dni) {
       const rec = await prisma.playerRecord.findFirst({
         where:   { dni: { equals: self.dni, mode: "insensitive" } },
         orderBy: { createdAt: "desc" },
-        select:  { ppd: true, mpr: true, combined: true, gamesPlayed: true },
+        select:  { ppd: true, mpr: true, combined: true, gamesPlayed: true, season: true },
       });
-      if (rec) { selfMetric = rec[metricField] ?? null; selfGames = rec.gamesPlayed ?? null; }
+      if (rec) {
+        selfMetric = rec[metricField] ?? null;
+        selfGames  = rec.gamesPlayed ?? null;
+        selfMprVal = rec.mpr ?? null;
+        selfPpdVal = rec.ppd ?? null;
+        selfSource = rec.season ?? "Histórico";
+      }
     }
     // Player has no historical record → derive the metric from the mpr/ppd they
     // entered (combined = mpr*10 + ppd), matching the tournament's metric type.
     if (selfMetric == null) {
+      if (selfMpr != null) selfMprVal = selfMpr;
+      if (selfPpd != null) selfPpdVal = selfPpd;
       if (metricField === "mpr" && selfMpr != null) selfMetric = selfMpr;
       else if (metricField === "ppd" && selfPpd != null) selfMetric = selfPpd;
       else if (metricField === "combined" && selfMpr != null && selfPpd != null) {
@@ -524,6 +538,8 @@ export const playerInscribeGroup = async (req: AuthRequest, res: Response, next:
       } else if (selfMetricInput != null) {
         selfMetric = selfMetricInput; // legacy direct value
       }
+      // Provenance for a manually-entered metric = the note the player wrote
+      if (selfSource == null) selfSource = note?.trim() ? note.trim() : "Introducida por el jugador";
     }
     if (selfGames == null && selfGamesInput != null) selfGames = selfGamesInput;
 
@@ -540,14 +556,22 @@ export const playerInscribeGroup = async (req: AuthRequest, res: Response, next:
     if (existing) return next(badRequest("Ya estás inscrito en este torneo"));
 
     // ── Resolve partners → user accounts ───────────────────────────────────────
-    const partnerUsers: { id: string; name: string; metricValue: number | null; gamesPlayed: number | null }[] = [];
+    type PlayerRow = { id: string; name: string; metricValue: number | null; mpr: number | null; ppd: number | null; source: string | null; gamesPlayed: number | null };
+    const partnerUsers: PlayerRow[] = [];
     for (const p of partners) {
       const u = await findOrCreateUserByRecord(p.name, p.dni);
-      partnerUsers.push({ id: u.id, name: u.name, metricValue: p.metricValue ?? null, gamesPlayed: p.gamesPlayed ?? null });
+      partnerUsers.push({
+        id: u.id, name: u.name,
+        metricValue: p.metricValue ?? null,
+        mpr:         p.mpr ?? null,
+        ppd:         p.ppd ?? null,
+        source:      p.source ?? "Histórico",
+        gamesPlayed: p.gamesPlayed ?? null,
+      });
     }
 
     const allPlayers = [
-      { id: self.id, name: self.name, metricValue: selfMetric, gamesPlayed: selfGames, captain: true },
+      { id: self.id, name: self.name, metricValue: selfMetric, mpr: selfMprVal, ppd: selfPpdVal, source: selfSource, gamesPlayed: selfGames, captain: true },
       ...partnerUsers.map(p => ({ ...p, captain: false })),
     ];
 
@@ -602,6 +626,9 @@ export const playerInscribeGroup = async (req: AuthRequest, res: Response, next:
             userId:      p.id,
             role:        (p.captain ? "captain" : "member") as any,
             metricValue: p.metricValue,
+            mpr:         p.mpr,
+            ppd:         p.ppd,
+            metricSource: p.source,
             gamesPlayed: p.gamesPlayed,
           })),
         },
