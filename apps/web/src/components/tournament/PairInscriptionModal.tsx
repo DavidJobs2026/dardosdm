@@ -50,8 +50,11 @@ export function PairInscriptionModal({
   const [results, setResults]   = useState<RecordResult[]>([]);
   const [searching, setSearching] = useState(false);
   const [partners, setPartners] = useState<Partner[]>([]);
+  const [groupName, setGroupName] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const debounce = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const groupLabel = requiredPartners === 1 ? "pareja" : "equipo";
 
   // ── Own metric ─────────────────────────────────────────────────────────────
   // Fetch the player's own metric/games. If they have none in the historical DB,
@@ -128,10 +131,15 @@ export function PairInscriptionModal({
       toast.error("Introduce tu media");
       return;
     }
+    if (groupName.trim().length < 2) {
+      toast.error(`Pon un nombre a la ${groupLabel}`);
+      return;
+    }
     setSubmitting(true);
     try {
       await api.post(`/tournaments/${tournamentId}/player-inscribe-group`, {
         partners,
+        groupName: groupName.trim(),
         ...(needsSelfMetric ? {
           selfMetric: parsedSelfMetric,
           ...(parsedSelfGames != null && isFinite(parsedSelfGames) ? { selfGames: parsedSelfGames } : {}),
@@ -167,6 +175,21 @@ export function PairInscriptionModal({
         </div>
 
         <div className="px-5 py-4 space-y-4 overflow-y-auto">
+          {/* Pair / team name */}
+          <div>
+            <label className="block text-xs font-semibold text-ink-400 mb-1.5 uppercase tracking-wide">
+              Nombre de la {groupLabel}
+            </label>
+            <input
+              value={groupName}
+              onChange={e => setGroupName(e.target.value)}
+              maxLength={60}
+              placeholder={`Nombre de tu ${groupLabel}…`}
+              className="w-full px-3.5 py-2.5 bg-ink-950 border border-ink-700 rounded-xl text-white text-sm
+                         focus:outline-none focus:border-red-500/60 transition-all placeholder-ink-600"
+            />
+          </div>
+
           {/* You (captain) */}
           {selfLoading ? (
             <div className="rounded-xl border border-ink-700 bg-ink-800/40 p-3 text-xs text-ink-500 flex items-center gap-2">
@@ -302,7 +325,7 @@ export function PairInscriptionModal({
             className="flex-1 py-2.5 rounded-xl border border-ink-700 text-ink-400 text-sm font-semibold hover:text-white hover:border-ink-500 transition-colors">
             Cancelar
           </button>
-          <button onClick={handleSubmit} disabled={submitting || partners.length !== requiredPartners || (needsSelfMetric && (parsedSelfMetric == null || !isFinite(parsedSelfMetric)))}
+          <button onClick={handleSubmit} disabled={submitting || partners.length !== requiredPartners || groupName.trim().length < 2 || (needsSelfMetric && (parsedSelfMetric == null || !isFinite(parsedSelfMetric)))}
             className="flex-1 py-2.5 rounded-xl bg-red-600 hover:bg-red-500 text-white text-sm font-bold transition-colors disabled:opacity-50 flex items-center justify-center gap-1.5">
             {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
             {submitting ? "Enviando…" : "Inscribir pareja"}
