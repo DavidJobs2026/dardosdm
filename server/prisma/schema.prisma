@@ -73,6 +73,10 @@ model User {
   emailVerifyExpires  DateTime? @map("email_verify_expires")
   pwResetToken        String?   @unique @map("pw_reset_token")
   pwResetExpires      DateTime? @map("pw_reset_expires")
+  // ── Two-factor authentication (TOTP) ──────────────────────────────────────
+  twoFactorSecret         String?   @map("two_factor_secret")         // base32 TOTP secret (pending until enabled)
+  twoFactorEnabled        Boolean   @default(false) @map("two_factor_enabled")
+  twoFactorRecoveryCodes  String[]  @default([]) @map("two_factor_recovery_codes") // SHA-256 hashes of one-time recovery codes
   createdAt       DateTime  @default(now()) @map("created_at")
   updatedAt       DateTime  @updatedAt @map("updated_at")
 

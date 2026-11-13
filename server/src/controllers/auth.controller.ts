@@ -3,7 +3,9 @@ import bcrypt from "bcryptjs";
 import crypto from "crypto";
 import { z } from "zod";
 import { prisma } from "../lib/prisma";
-import { signAccessToken, signRefreshToken, verifyRefreshToken } from "../utils/jwt";
+import { signAccessToken, signRefreshToken, verifyRefreshToken, signPending2FAToken, verifyPending2FAToken } from "../utils/jwt";
+import { authenticator } from "otplib";
+import QRCode from "qrcode";
 import { badRequest, unauthorized, notFound } from "../utils/errors";
 import { AuthRequest } from "../middlewares/auth.middleware";
 import { sendWelcomeVerification, sendPasswordReset, sendPasswordChangedAlert } from "../lib/email";
@@ -331,6 +333,33 @@ export const resendVerification = async (req: Request, res: Response, next: Next
   } catch (err) { next(err); }
 };
 
+// Issues an access token + refresh cookie for a user and returns the login payload.
+// Shared by the normal login and the second (TOTP) step of a 2FA login.
+async function completeLogin(req: Request, res: Response, user: { id: string; email: string; name: string; role: string; createdAt: Date }) {
+  const payload = { userId: user.id, role: user.role };
+  const accessToken = signAccessToken(payload);
+  const refreshToken = signRefreshToken(payload);
+
+  const expiresAt = new Date(Date.now() + COOKIE_MAX_AGE);
+  await prisma.refreshToken.create({
+    data: { token: hashToken(refreshToken), userId: user.id, expiresAt, userAgent: extractUserAgent(req) },
+  });
+
+  setRefreshCookie(res, refreshToken);
+
+  const ip = (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() || req.socket?.remoteAddress;
+  prisma.auditLog.create({
+    data: { userId: user.id, action: "user.login", entityType: "user", entityId: user.id, entityName: user.name, ip: ip ?? null, details: {} },
+  }).catch(() => {});
+
+  return res.json({
+    data: {
+      user: { id: user.id, email: user.email, name: user.name, role: user.role, createdAt: user.createdAt },
+      tokens: { accessToken },
+    },
+  });
+}
+
 export const login = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const raw = loginSchema.parse(req.body);
@@ -352,29 +381,57 @@ export const login = async (req: Request, res: Response, next: NextFunction) => 
       });
     }
 
-    const payload = { userId: user.id, role: user.role };
-    const accessToken = signAccessToken(payload);
-    const refreshToken = signRefreshToken(payload);
+    // If the account has 2FA, the password alone is not enough: hand back a
+    // short-lived pending token and require the TOTP step at /auth/2fa/login.
+    if (user.twoFactorEnabled) {
+      return res.json({ data: { requires2fa: true, pendingToken: signPending2FAToken(user.id) } });
+    }
 
-    const expiresAt = new Date(Date.now() + COOKIE_MAX_AGE);
-    await prisma.refreshToken.create({
-      data: { token: hashToken(refreshToken), userId: user.id, expiresAt, userAgent: extractUserAgent(req) },
-    });
+    return await completeLogin(req, res, user);
+  } catch (err) {
+    next(err);
+  }
+};
 
-    setRefreshCookie(res, refreshToken);
+// ─── 2FA login step: verify the TOTP (or a recovery code) and issue a session ──
+export const login2FA = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { pendingToken, code } = z.object({
+      pendingToken: z.string().min(1),
+      code:         z.string().min(1).max(20),
+    }).parse(req.body);
 
-    // Audit login for security monitoring (detects unauthorized access)
-    const ip = (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() || req.socket?.remoteAddress;
-    prisma.auditLog.create({
-      data: { userId: user.id, action: "user.login", entityType: "user", entityId: user.id, entityName: user.name, ip: ip ?? null, details: {} },
-    }).catch(() => {});
+    let userId: string;
+    try {
+      ({ userId } = verifyPending2FAToken(pendingToken));
+    } catch {
+      return next(unauthorized("La verificación ha caducado, vuelve a iniciar sesión"));
+    }
 
-    return res.json({
-      data: {
-        user: { id: user.id, email: user.email, name: user.name, role: user.role, createdAt: user.createdAt },
-        tokens: { accessToken }, // refreshToken is now in httpOnly cookie only
-      },
-    });
+    const user = await prisma.user.findUnique({ where: { id: userId } });
+    if (!user || !user.twoFactorEnabled || !user.twoFactorSecret) {
+      return next(unauthorized("Invalid credentials"));
+    }
+
+    const clean = code.replace(/\s+/g, "");
+    // A 6-digit value is a TOTP; anything else is treated as a recovery code.
+    let ok = false;
+    if (/^\d{6}$/.test(clean)) {
+      ok = authenticator.verify({ token: clean, secret: user.twoFactorSecret });
+    } else {
+      const hash = hashToken(clean.toLowerCase());
+      if (user.twoFactorRecoveryCodes.includes(hash)) {
+        ok = true;
+        // Recovery codes are single-use — consume it
+        await prisma.user.update({
+          where: { id: user.id },
+          data:  { twoFactorRecoveryCodes: user.twoFactorRecoveryCodes.filter(h => h !== hash) },
+        });
+      }
+    }
+    if (!ok) return next(unauthorized("Código incorrecto"));
+
+    return await completeLogin(req, res, user);
   } catch (err) {
     next(err);
   }
@@ -476,13 +533,74 @@ export const me = async (req: AuthRequest, res: Response, next: NextFunction) =>
   try {
     const user = await prisma.user.findUnique({
       where: { id: req.user!.userId },
-      select: { id: true, email: true, name: true, avatarUrl: true, role: true, elo: true, createdAt: true, emailVerified: true },
+      select: { id: true, email: true, name: true, avatarUrl: true, role: true, elo: true, createdAt: true, emailVerified: true, twoFactorEnabled: true },
     });
     if (!user) return next(notFound("User"));
     return res.json({ data: user });
   } catch (err) {
     next(err);
   }
+};
+
+// ─── 2FA setup: generate a secret + QR (not yet enabled) ──────────────────────
+export const setup2FA = async (req: AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    const user = await prisma.user.findUnique({ where: { id: req.user!.userId }, select: { email: true, twoFactorEnabled: true } });
+    if (!user) return next(notFound("User"));
+    if (user.twoFactorEnabled) return next(badRequest("La verificación en dos pasos ya está activada"));
+
+    const secret  = authenticator.generateSecret();        // base32
+    const otpauth = authenticator.keyuri(user.email, "DardosDM", secret);
+    const qr      = await QRCode.toDataURL(otpauth);
+
+    // Store as the PENDING secret (enabled only after the user confirms a code)
+    await prisma.user.update({ where: { id: req.user!.userId }, data: { twoFactorSecret: secret } });
+
+    return res.json({ data: { qr, secret, otpauth } });
+  } catch (err) { next(err); }
+};
+
+// ─── 2FA enable: confirm a code, turn it on, return one-time recovery codes ────
+export const enable2FA = async (req: AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    const { code } = z.object({ code: z.string().min(6).max(10) }).parse(req.body);
+    const user = await prisma.user.findUnique({ where: { id: req.user!.userId }, select: { twoFactorSecret: true, twoFactorEnabled: true } });
+    if (!user) return next(notFound("User"));
+    if (user.twoFactorEnabled) return next(badRequest("Ya está activada"));
+    if (!user.twoFactorSecret) return next(badRequest("Genera primero el código QR"));
+
+    const ok = authenticator.verify({ token: code.replace(/\s+/g, ""), secret: user.twoFactorSecret });
+    if (!ok) return next(badRequest("Código incorrecto. Revisa la hora de tu teléfono e inténtalo de nuevo."));
+
+    // Generate 8 one-time recovery codes; store only their hashes, show raw once
+    const rawCodes = Array.from({ length: 8 }, () =>
+      `${crypto.randomBytes(2).toString("hex")}-${crypto.randomBytes(2).toString("hex")}`.toLowerCase()
+    );
+    await prisma.user.update({
+      where: { id: req.user!.userId },
+      data:  { twoFactorEnabled: true, twoFactorRecoveryCodes: rawCodes.map(c => hashToken(c)) },
+    });
+
+    return res.json({ data: { enabled: true, recoveryCodes: rawCodes } });
+  } catch (err) { next(err); }
+};
+
+// ─── 2FA disable: requires the current password ───────────────────────────────
+export const disable2FA = async (req: AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    const { password } = z.object({ password: z.string().min(1) }).parse(req.body);
+    const user = await prisma.user.findUnique({ where: { id: req.user!.userId }, select: { passwordHash: true } });
+    if (!user) return next(notFound("User"));
+
+    const valid = await bcrypt.compare(password, user.passwordHash);
+    if (!valid) return next(badRequest("Contraseña incorrecta"));
+
+    await prisma.user.update({
+      where: { id: req.user!.userId },
+      data:  { twoFactorEnabled: false, twoFactorSecret: null, twoFactorRecoveryCodes: [] },
+    });
+    return res.json({ data: { enabled: false }, message: "Verificación en dos pasos desactivada" });
+  } catch (err) { next(err); }
 };
 
 // ─── Forgot password — send reset email ──────────────────────────────────────

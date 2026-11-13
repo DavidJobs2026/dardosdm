@@ -26,7 +26,8 @@ interface AuthState {
    *  and a private resource 404s before auth is ready. */
   authInitialized: boolean;
 
-  login:       (email: string, password: string) => Promise<void>;
+  login:       (email: string, password: string) => Promise<{ requires2fa: boolean; pendingToken?: string }>;
+  login2fa:    (pendingToken: string, code: string) => Promise<void>;
   register:    (email: string, password: string, name: string, role: "organizer" | "player", extra?: PlayerExtra) => Promise<void>;
   logout:      () => Promise<void>;
   logoutAll:   () => Promise<void>;
@@ -48,8 +49,25 @@ export const useAuthStore = create<AuthState>()(
         set({ isLoading: true });
         try {
           const { data } = await api.post("/auth/login", { email, password });
+          // Account with 2FA → no session yet; caller must complete with login2fa()
+          if (data.data?.requires2fa) {
+            return { requires2fa: true, pendingToken: data.data.pendingToken };
+          }
           const { user, tokens } = data.data;
           // Token lives only in memory — never written to any storage
+          setAccessToken(tokens.accessToken);
+          set({ user, accessToken: tokens.accessToken });
+          return { requires2fa: false };
+        } finally {
+          set({ isLoading: false });
+        }
+      },
+
+      login2fa: async (pendingToken, code) => {
+        set({ isLoading: true });
+        try {
+          const { data } = await api.post("/auth/2fa/login", { pendingToken, code });
+          const { user, tokens } = data.data;
           setAccessToken(tokens.accessToken);
           set({ user, accessToken: tokens.accessToken });
         } finally {

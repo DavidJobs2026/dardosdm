@@ -130,6 +130,7 @@ app.use("/api/v1/auth/check-dni",             enumerationLimiter);              
 app.use("/api/v1/auth/request-verification",  emailSendLimiter);                    // 3/15min  — email spam
 app.use("/api/v1/auth/resend-verification",   emailSendLimiter);                    // 3/15min
 app.use("/api/v1/auth/forgot-password",       emailSendLimiter, forgotEmailLimiter);// IP + email: 3/15min + 3/h per email
+app.use("/api/v1/auth/2fa/login",             authLimiter);                          // 30/15min — TOTP brute-force guard
 app.use("/api/v1/auth/login",                 authLimiter, loginEmailLimiter);       // IP + email: 30/15min + 10/h per email
 app.use("/api/v1/auth/register",              authLimiter);                          // 30/15min — IP only
 app.use("/api/v1/auth/refresh",               refreshLimiter);                       // 60/15min — token brute-force

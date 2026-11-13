@@ -29,3 +29,19 @@ export const verifyAccessToken = (token: string): JwtPayload =>
 
 export const verifyRefreshToken = (token: string): JwtPayload =>
   jwt.verify(token, REFRESH_SECRET!, { algorithms: ["HS256"] }) as JwtPayload;
+
+// ─── Pending 2FA token ────────────────────────────────────────────────────────
+// Issued after a correct password when the account has 2FA enabled. It is NOT a
+// session token: it is signed with a DIFFERENT secret so it can never pass
+// verifyAccessToken (and thus cannot authenticate any request), and it is
+// short-lived. It only lets the holder complete the TOTP step at /auth/2fa/login.
+const PENDING_2FA_SECRET = `${ACCESS_SECRET}|2fa-pending`;
+
+export const signPending2FAToken = (userId: string): string =>
+  jwt.sign({ userId, purpose: "2fa" }, PENDING_2FA_SECRET, { expiresIn: "5m" });
+
+export const verifyPending2FAToken = (token: string): { userId: string } => {
+  const payload = jwt.verify(token, PENDING_2FA_SECRET, { algorithms: ["HS256"] }) as { userId: string; purpose?: string };
+  if (payload.purpose !== "2fa") throw new Error("Invalid token purpose");
+  return { userId: payload.userId };
+};

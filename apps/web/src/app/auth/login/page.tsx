@@ -19,11 +19,15 @@ const schema = z.object({
 type FormData = z.infer<typeof schema>;
 
 export default function LoginPage() {
-  const { login, isLoading } = useAuthStore();
+  const { login, login2fa, isLoading } = useAuthStore();
   const router = useRouter();
   const [unverifiedEmail, setUnverifiedEmail] = useState<string | null>(null);
   const [resendSent, setResendSent]           = useState(false);
   const [resendLoading, setResendLoading]     = useState(false);
+  // ── 2FA step ──
+  const [pendingToken, setPendingToken] = useState<string | null>(null);
+  const [twoFaCode, setTwoFaCode]       = useState("");
+  const [twoFaLoading, setTwoFaLoading] = useState(false);
 
   const { register, handleSubmit, formState: { errors } } = useForm<FormData>({
     resolver: zodResolver(schema),
@@ -33,7 +37,11 @@ export default function LoginPage() {
     setUnverifiedEmail(null);
     setResendSent(false);
     try {
-      await login(data.email, data.password);
+      const res = await login(data.email, data.password);
+      if (res.requires2fa && res.pendingToken) {
+        setPendingToken(res.pendingToken);   // show the code step
+        return;
+      }
       toast.success("¡Bienvenido de vuelta!");
       router.push("/dashboard");
     } catch (err: any) {
@@ -42,6 +50,26 @@ export default function LoginPage() {
       } else {
         toast.error(err.response?.data?.message || "Credenciales incorrectas");
       }
+    }
+  };
+
+  const handle2faSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!pendingToken || twoFaCode.trim().length < 6) { toast.error("Introduce el código"); return; }
+    setTwoFaLoading(true);
+    try {
+      await login2fa(pendingToken, twoFaCode.trim());
+      toast.success("¡Bienvenido de vuelta!");
+      router.push("/dashboard");
+    } catch (err: any) {
+      const msg = err.response?.data?.message || "Código incorrecto";
+      toast.error(msg);
+      // If the pending token expired, send the user back to the password step
+      if (err.response?.status === 401 && /caduc/i.test(msg)) {
+        setPendingToken(null); setTwoFaCode("");
+      }
+    } finally {
+      setTwoFaLoading(false);
     }
   };
 
@@ -110,6 +138,34 @@ export default function LoginPage() {
             <span className="text-xl font-bold text-white">Dardos<span className="text-red-500">DM</span></span>
           </div>
 
+          {pendingToken ? (
+            <form onSubmit={handle2faSubmit} className="space-y-5">
+              <h1 className="text-3xl font-black text-white mb-1">Verificación en dos pasos</h1>
+              <p className="text-ink-400 mb-6">Introduce el código de 6 dígitos de tu app de autenticación.</p>
+              <div>
+                <label className="label">Código</label>
+                <input
+                  value={twoFaCode}
+                  onChange={e => setTwoFaCode(e.target.value)}
+                  inputMode="numeric"
+                  autoFocus
+                  autoComplete="one-time-code"
+                  placeholder="123456"
+                  maxLength={20}
+                  className="input text-center text-xl tracking-[0.4em]"
+                />
+                <p className="text-ink-600 text-xs mt-2">¿Sin acceso a la app? Escribe uno de tus códigos de recuperación.</p>
+              </div>
+              <button type="submit" className="btn-primary w-full py-3 text-base mt-2 shadow-red-glow" disabled={twoFaLoading}>
+                {twoFaLoading ? "Verificando..." : <>Verificar <ChevronRight className="w-4 h-4" /></>}
+              </button>
+              <button type="button" onClick={() => { setPendingToken(null); setTwoFaCode(""); }}
+                className="w-full text-xs text-ink-500 hover:text-ink-300 transition-colors">
+                ← Volver
+              </button>
+            </form>
+          ) : (
+          <>
           <h1 className="text-3xl font-black text-white mb-1">Iniciar sesión</h1>
           <p className="text-ink-400 mb-8">Accede a tu cuenta de torneos</p>
 
@@ -187,6 +243,8 @@ export default function LoginPage() {
               </Link>
             </p>
           </div>
+          </>
+          )}
         </div>
       </div>
     </div>

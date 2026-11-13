@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { Trophy, LogOut, LayoutDashboard, Menu, X, Database, Target, MonitorX, KeyRound, Eye, EyeOff, Bell, BellOff, Trash2, AlertTriangle } from "lucide-react";
+import { Trophy, LogOut, LayoutDashboard, Menu, X, Database, Target, MonitorX, KeyRound, Eye, EyeOff, Bell, BellOff, Trash2, AlertTriangle, ShieldCheck } from "lucide-react";
+import { TwoFactorModal } from "./TwoFactorModal";
 import { useAuthStore } from "@/store/auth.store";
 import { clsx } from "clsx";
 import { useRef, useState, useEffect } from "react";
@@ -15,7 +16,8 @@ import { usePushNotifications } from "@/hooks/usePushNotifications";
 const LOCAL_COMMIT = (process.env.NEXT_PUBLIC_COMMIT_SHA ?? "local").slice(0, 7);
 
 export function Navbar() {
-  const { user, logout, logoutAll } = useAuthStore();
+  const { user, logout, logoutAll, refreshUser } = useAuthStore();
+  const [showTwoFa, setShowTwoFa] = useState(false);
   const pathname = usePathname();
   const router   = useRouter();
   const [open, setOpen]           = useState(false);
@@ -197,6 +199,13 @@ export function Navbar() {
                         <KeyRound className="w-4 h-4 text-ink-500" />
                         Cambiar contraseña
                       </button>
+                      <button
+                        onClick={() => { setUserMenu(false); setShowTwoFa(true); }}
+                        className="flex items-center gap-2.5 w-full px-4 py-3 text-sm text-ink-300
+                                   hover:bg-ink-800 hover:text-white transition-colors text-left">
+                        <ShieldCheck className="w-4 h-4 text-ink-500" />
+                        Verificación en dos pasos
+                      </button>
                       {/* Push notification toggle — always accessible so players can re-activate */}
                       {isSupported && (
                         <>
@@ -284,6 +293,11 @@ export function Navbar() {
             <MonitorX className="w-4 h-4" /> Cerrar todos los dispositivos
           </button>
         </div>
+      )}
+
+      {/* Two-factor authentication modal */}
+      {showTwoFa && (
+        <TwoFactorModal onClose={() => setShowTwoFa(false)} onChanged={() => { refreshUser(); }} />
       )}
 
       {/* Change password modal */}
