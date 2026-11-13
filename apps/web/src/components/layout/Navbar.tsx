@@ -284,6 +284,16 @@ export function Navbar() {
               <LayoutDashboard className="w-4 h-4" />Dashboard
             </Link>
           )}
+          <div className="h-px bg-ink-800 my-1.5" />
+          <button onClick={() => { setOpen(false); setShowChangePw(true); }}
+            className="flex items-center gap-2 w-full px-3 py-2.5 rounded-lg text-sm font-medium text-ink-400 hover:text-white hover:bg-ink-800 transition-colors">
+            <KeyRound className="w-4 h-4" /> Cambiar contraseña
+          </button>
+          <button onClick={() => { setOpen(false); setShowTwoFa(true); }}
+            className="flex items-center gap-2 w-full px-3 py-2.5 rounded-lg text-sm font-medium text-ink-400 hover:text-white hover:bg-ink-800 transition-colors">
+            <ShieldCheck className="w-4 h-4" /> Verificación en dos pasos
+          </button>
+          <div className="h-px bg-ink-800 my-1.5" />
           <button onClick={() => { setOpen(false); handleLogout(); }}
             className="flex items-center gap-2 w-full px-3 py-2.5 rounded-lg text-sm font-medium text-ink-400 hover:text-white hover:bg-ink-800 transition-colors">
             <LogOut className="w-4 h-4" /> Cerrar sesión
