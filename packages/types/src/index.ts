@@ -43,6 +43,7 @@ export interface User {
   whatsappConsent?: boolean;
   emailConsent?: boolean;
   emailVerified?: boolean;
+  twoFactorEnabled?: boolean;
 }
 
 export interface AuthTokens {

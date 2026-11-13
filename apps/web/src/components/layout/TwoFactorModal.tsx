@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { api } from "@/lib/api";
 import toast from "react-hot-toast";
@@ -8,7 +8,7 @@ import { ShieldCheck, X, Loader2, Copy, Check, AlertTriangle, KeyRound } from "l
 
 type Phase = "loading" | "status" | "setup" | "recovery" | "disable";
 
-export function TwoFactorModal({ onClose, onChanged }: { onClose: () => void; onChanged?: () => void }) {
+export function TwoFactorModal({ onClose, onChanged, autoStart }: { onClose: () => void; onChanged?: () => void; autoStart?: boolean }) {
   const [phase, setPhase]     = useState<Phase>("loading");
   const [enabled, setEnabled] = useState(false);
   const [busy, setBusy]       = useState(false);
@@ -20,13 +20,6 @@ export function TwoFactorModal({ onClose, onChanged }: { onClose: () => void; on
   const [password, setPassword] = useState("");
   const [copied, setCopied]   = useState(false);
 
-  // Fetch current status on open
-  useEffect(() => {
-    api.get("/auth/me")
-      .then(({ data }) => { setEnabled(!!data.data?.twoFactorEnabled); setPhase("status"); })
-      .catch(() => { setPhase("status"); });
-  }, []);
-
   const startSetup = async () => {
     setBusy(true);
     try {
@@ -37,6 +30,25 @@ export function TwoFactorModal({ onClose, onChanged }: { onClose: () => void; on
       toast.error(err.response?.data?.message || "No se pudo iniciar la configuración");
     } finally { setBusy(false); }
   };
+
+  // Fetch current status on open. With autoStart, jump straight to the QR setup
+  // when 2FA is not yet enabled (used by the enforced prompt). The ref guard
+  // prevents React StrictMode's double-invoke from calling setup twice (which
+  // would store two different secrets and break the code confirmation).
+  const didInit = useRef(false);
+  useEffect(() => {
+    if (didInit.current) return;
+    didInit.current = true;
+    api.get("/auth/me")
+      .then(({ data }) => {
+        const on = !!data.data?.twoFactorEnabled;
+        setEnabled(on);
+        if (!on && autoStart) startSetup();
+        else setPhase("status");
+      })
+      .catch(() => { setPhase("status"); });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const confirmEnable = async (e: React.FormEvent) => {
     e.preventDefault();

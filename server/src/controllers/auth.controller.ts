@@ -6,6 +6,8 @@ import { prisma } from "../lib/prisma";
 import { signAccessToken, signRefreshToken, verifyRefreshToken, signPending2FAToken, verifyPending2FAToken } from "../utils/jwt";
 import { authenticator } from "otplib";
 import QRCode from "qrcode";
+// Tolerate ±1 time step (30s) of clock drift so codes near a boundary still verify
+authenticator.options = { window: 1 };
 import { badRequest, unauthorized, notFound } from "../utils/errors";
 import { AuthRequest } from "../middlewares/auth.middleware";
 import { sendWelcomeVerification, sendPasswordReset, sendPasswordChangedAlert } from "../lib/email";
@@ -335,7 +337,7 @@ export const resendVerification = async (req: Request, res: Response, next: Next
 
 // Issues an access token + refresh cookie for a user and returns the login payload.
 // Shared by the normal login and the second (TOTP) step of a 2FA login.
-async function completeLogin(req: Request, res: Response, user: { id: string; email: string; name: string; role: string; createdAt: Date }) {
+async function completeLogin(req: Request, res: Response, user: { id: string; email: string; name: string; role: string; createdAt: Date; twoFactorEnabled?: boolean }) {
   const payload = { userId: user.id, role: user.role };
   const accessToken = signAccessToken(payload);
   const refreshToken = signRefreshToken(payload);
@@ -354,7 +356,7 @@ async function completeLogin(req: Request, res: Response, user: { id: string; em
 
   return res.json({
     data: {
-      user: { id: user.id, email: user.email, name: user.name, role: user.role, createdAt: user.createdAt },
+      user: { id: user.id, email: user.email, name: user.name, role: user.role, createdAt: user.createdAt, twoFactorEnabled: !!user.twoFactorEnabled },
       tokens: { accessToken },
     },
   });
@@ -545,16 +547,19 @@ export const me = async (req: AuthRequest, res: Response, next: NextFunction) =>
 // ─── 2FA setup: generate a secret + QR (not yet enabled) ──────────────────────
 export const setup2FA = async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
-    const user = await prisma.user.findUnique({ where: { id: req.user!.userId }, select: { email: true, twoFactorEnabled: true } });
+    const user = await prisma.user.findUnique({ where: { id: req.user!.userId }, select: { email: true, twoFactorEnabled: true, twoFactorSecret: true } });
     if (!user) return next(notFound("User"));
     if (user.twoFactorEnabled) return next(badRequest("La verificación en dos pasos ya está activada"));
 
-    const secret  = authenticator.generateSecret();        // base32
+    // Reuse a pending secret if one exists (idempotent setup) so repeated calls
+    // never store a different secret than the one shown to the user.
+    const secret  = user.twoFactorSecret || authenticator.generateSecret();  // base32
     const otpauth = authenticator.keyuri(user.email, "DardosDM", secret);
     const qr      = await QRCode.toDataURL(otpauth);
 
-    // Store as the PENDING secret (enabled only after the user confirms a code)
-    await prisma.user.update({ where: { id: req.user!.userId }, data: { twoFactorSecret: secret } });
+    if (!user.twoFactorSecret) {
+      await prisma.user.update({ where: { id: req.user!.userId }, data: { twoFactorSecret: secret } });
+    }
 
     return res.json({ data: { qr, secret, otpauth } });
   } catch (err) { next(err); }
